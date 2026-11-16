@@ -43,6 +43,7 @@ Todo corre en un único contenedor Docker; el host no necesita tener instalado `
 | Permisos | Poder ejecutar `docker` (root o usuario del grupo `docker`) |
 | Puerto | Uno libre para la web (por defecto **8093**) |
 | Red | Salida a internet sólo para enviar avisos (Telegram, SMTP, etc.) y para construir la imagen |
+| Git | Para descargar y actualizar (`apt install git`). Opcional si usas el paquete `.tar.gz` |
 
 Verifica Docker:
 
@@ -59,13 +60,15 @@ Si no lo tienes, en Debian/Ubuntu: `curl -fsSL https://get.docker.com | sh`
 
 ## 2. Instalación rápida
 
-Copia el paquete al servidor, descomprímelo y ejecuta el instalador:
+Clona el repositorio y ejecuta el instalador:
 
 ```sh
-tar xzf disk-monitor-v*.tar.gz
+git clone https://github.com/r34lcl/Disk-Monitor.git disk-monitor
 cd disk-monitor
 ./install.sh
 ```
+
+> Sin git: descarga el código desde GitHub (**Code → Download ZIP**) o usa el paquete `disk-monitor-vX.Y.tar.gz` (`tar xzf disk-monitor-v*.tar.gz`), y sigue desde `cd disk-monitor`.
 
 El script:
 
@@ -88,7 +91,7 @@ Si prefieres no usar el script:
 
 ```sh
 mkdir -p /opt && cd /opt          # o la ruta que prefieras
-tar xzf disk-monitor-v*.tar.gz
+git clone https://github.com/r34lcl/Disk-Monitor.git disk-monitor
 cd disk-monitor
 mkdir -p data
 ```
@@ -280,7 +283,7 @@ Si sólo lo usarás detrás del proxy, puedes publicar el puerto únicamente en 
 
 ## 8. Instalarlo en varios servidores
 
-Instala el mismo paquete en cada servidor siguiendo la [sección 2](#2-instalación-rápida). Cada instalación es independiente y detecta sus propios discos al iniciar.
+Clona el repositorio en cada servidor siguiendo la [sección 2](#2-instalación-rápida). Cada instalación es independiente y detecta sus propios discos al iniciar.
 
 **Copiar la configuración** (canales, umbrales, horarios) de un servidor a otro:
 
@@ -300,7 +303,7 @@ Pon un **nombre de servidor** distinto en cada uno (Configuración → General) 
 | Ver logs | `docker compose logs -f` |
 | Reiniciar | `docker compose restart` |
 | Aplicar cambios del `.env` | `docker compose up -d` (con `restart` **no** se recargan las variables) |
-| Actualizar a una versión nueva | descomprime el paquete nuevo sobre la misma carpeta (se conservan `data/` y `.env`) y ejecuta `./install.sh`. Los horarios de versiones anteriores se convierten solos en tareas. |
+| Actualizar a una versión nueva | `git pull && ./install.sh` (se conservan `data/` y `.env`, que git no toca). Con el paquete `.tar.gz`: descomprime el nuevo sobre la misma carpeta y ejecuta `./install.sh`. Los horarios de versiones anteriores se convierten solos en tareas. |
 | Detener | `docker compose down` |
 | Respaldar | copia `data/disk-monitor.db` y `.env` |
 | Cambiar la contraseña | edita `APP_PASSWORD` en `.env` y luego `docker compose up -d` (cierra las sesiones abiertas) |

@@ -1,0 +1,7 @@
+# configuración local y datos (contienen contraseñas, tokens e historial)
+.env
+data/
+# generados
+__pycache__/
+*.pyc
+*.tar.gz

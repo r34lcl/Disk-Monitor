@@ -1,0 +1,17 @@
+# Disk Monitor: estado SMART de los discos físicos, pools ZFS y espacio, con alertas
+# por Telegram / correo / Apprise. Portable: no depende de nada específico de este host.
+services:
+  disk-monitor:
+    build: .
+    image: disk-monitor:latest
+    container_name: disk-monitor
+    restart: unless-stopped
+    env_file: .env
+    privileged: true          # smartctl necesita acceso directo a /dev/sdX, /dev/nvmeX, controladoras RAID
+    pid: host                 # montajes/espacio del host vía /proc/1 y zpool del host vía nsenter
+    ports:
+      - "${HOST_PORT:-8093}:8000"
+    volumes:
+      - ./data:/data
+      - /dev:/dev
+      - /run/udev:/run/udev:ro   # datos de udev para lsblk (si no existe en el host, no pasa nada)

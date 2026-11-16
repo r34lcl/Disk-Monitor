@@ -43,7 +43,7 @@ Todo corre en un único contenedor Docker; el host no necesita tener instalado `
 | Permisos | Poder ejecutar `docker` (root o usuario del grupo `docker`) |
 | Puerto | Uno libre para la web (por defecto **8093**) |
 | Red | Salida a internet sólo para enviar avisos (Telegram, SMTP, etc.) y para construir la imagen |
-| Git | Para descargar y actualizar (`apt install git`). Opcional si usas el paquete `.tar.gz` |
+| Git | Para descargar y actualizar (`apt install git`). Sin git se puede usar el ZIP de GitHub (requiere `unzip`) |
 
 Verifica Docker:
 
@@ -68,7 +68,14 @@ cd disk-monitor
 ./install.sh
 ```
 
-> Sin git: descarga el código desde GitHub (**Code → Download ZIP**) o usa el paquete `disk-monitor-vX.Y.tar.gz` (`tar xzf disk-monitor-v*.tar.gz`), y sigue desde `cd disk-monitor`.
+**Sin git**, con el ZIP de GitHub (el mismo de **Code → Download ZIP**). Se descomprime en `Disk-Monitor-main`, así que hay que renombrar la carpeta:
+
+```sh
+wget https://github.com/r34lcl/Disk-Monitor/archive/refs/heads/main.zip          # o: curl -LO https://github.com/r34lcl/Disk-Monitor/archive/refs/heads/main.zip
+unzip main.zip && mv Disk-Monitor-main disk-monitor
+cd disk-monitor
+sh install.sh
+```
 
 El script:
 
@@ -303,7 +310,7 @@ Pon un **nombre de servidor** distinto en cada uno (Configuración → General) 
 | Ver logs | `docker compose logs -f` |
 | Reiniciar | `docker compose restart` |
 | Aplicar cambios del `.env` | `docker compose up -d` (con `restart` **no** se recargan las variables) |
-| Actualizar a una versión nueva | `git pull && ./install.sh` (se conservan `data/` y `.env`, que git no toca). Con el paquete `.tar.gz`: descomprime el nuevo sobre la misma carpeta y ejecuta `./install.sh`. Los horarios de versiones anteriores se convierten solos en tareas. |
+| Actualizar a una versión nueva | `git pull && ./install.sh` (se conservan `data/` y `.env`, que git no toca). Si instalaste con el ZIP: descarga el nuevo, descomprímelo y copia su contenido sobre la carpeta (`unzip -o main.zip && cp -r Disk-Monitor-main/. disk-monitor/`), luego `cd disk-monitor && sh install.sh`. Los horarios de versiones anteriores se convierten solos en tareas. |
 | Detener | `docker compose down` |
 | Respaldar | copia `data/disk-monitor.db` y `.env` |
 | Cambiar la contraseña | edita `APP_PASSWORD` en `.env` y luego `docker compose up -d` (cierra las sesiones abiertas) |

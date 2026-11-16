@@ -3,12 +3,23 @@ from __future__ import annotations
 
 import time
 
+from .i18n import _
+
 SEV_ORDER = {"ok": 0, "info": 1, "warning": 2, "critical": 3}
 TEST_ES = {"short offline": "corta", "short": "corta", "extended offline": "larga", "extended": "larga",
            "long": "larga", "conveyance offline": "de transporte"}
 POOL_STATE = {"DEGRADED": "degradado, sin redundancia", "FAULTED": "con falla, no disponible",
               "UNAVAIL": "no disponible", "SUSPENDED": "suspendido por errores de E/S", "OFFLINE": "fuera de línea",
               "REMOVED": "disco retirado"}
+
+
+def pool_state(st: str) -> str:
+    return _(POOL_STATE[st]) if st in POOL_STATE else st
+
+
+def test_name(t) -> str:
+    v = TEST_ES.get(str(t).lower())
+    return _(v) if v else str(t)
 
 
 BRANDS = (("WDC", "WD"), ("WD", "WD"), ("HGST", "HGST"), ("HUH", "HGST"), ("HUS", "HGST"), ("ST", "Seagate"),
@@ -52,7 +63,7 @@ def ident(d: dict) -> str:
     serial = d.get("serial") or ""
     bits = [d.get("model") or ""]
     if serial and set(serial) - {"0"}:
-        bits.append(f"serie {serial}")
+        bits.append(_("serie {serial}", serial=serial))
     return " · ".join(b for b in bits if b)
 
 
@@ -91,7 +102,7 @@ HINTS = {
 
 def _issue(subject, rule, sev, title, detail="", kind="issue"):
     return {"key": f"{subject}|{rule}", "subject": subject, "rule": rule, "severity": sev,
-            "title": title, "detail": detail, "kind": kind, "hint": HINTS.get(rule, "")}
+            "title": title, "detail": detail, "kind": kind, "hint": _(HINTS[rule]) if rule in HINTS else ""}
 
 
 def evaluate(disks: list[dict], pools: list[dict], fss: list[dict], settings: dict,
@@ -108,7 +119,7 @@ def evaluate(disks: list[dict], pools: list[dict], fss: list[dict], settings: di
             continue
         lab = label(d)
         if d["state"] == "error":
-            issues.append(_issue(k, "unreadable", "critical", f"{lab}: no responde a la lectura SMART",
+            issues.append(_issue(k, "unreadable", "critical", _("{lab}: no responde a la lectura SMART", lab=lab),
                                  d.get("error", "")))
             continue
         if d["state"] in ("standby", "nosmart"):
@@ -117,15 +128,15 @@ def evaluate(disks: list[dict], pools: list[dict], fss: list[dict], settings: di
         fl = d.get("flags") or {}
 
         if d.get("smart_passed") is False or fl.get("failing"):
-            issues.append(_issue(k, "smart_failed", "critical", f"{lab}: el disco reporta que está fallando",
-                                 "Estado SMART: FAILED."))
+            issues.append(_issue(k, "smart_failed", "critical", _("{lab}: el disco reporta que está fallando", lab=lab),
+                                 _("Estado SMART: FAILED.")))
         if fl.get("prefail_now"):
             bad = [a["name"] for a in d.get("attributes", []) if a.get("when_failed") == "now"]
-            issues.append(_issue(k, "prefail_now", "critical", f"{lab}: indicador de falla inminente",
+            issues.append(_issue(k, "prefail_now", "critical", _("{lab}: indicador de falla inminente", lab=lab),
                                  ", ".join(bad)))
         elif fl.get("prefail_past"):
             bad = [a["name"] for a in d.get("attributes", []) if a.get("when_failed") == "past"]
-            issues.append(_issue(k, "prefail_past", "warning", f"{lab}: tuvo un indicador de falla en el pasado",
+            issues.append(_issue(k, "prefail_past", "warning", _("{lab}: tuvo un indicador de falla en el pasado", lab=lab),
                                  ", ".join(bad)))
 
         # temperatura
@@ -134,60 +145,61 @@ def evaluate(disks: list[dict], pools: list[dict], fss: list[dict], settings: di
             ssd = d.get("kind") in ("SSD", "NVMe")
             warn, crit = (th["ssd_temp_warn"], th["ssd_temp_crit"]) if ssd else (th["hdd_temp_warn"], th["hdd_temp_crit"])
             if t >= crit:
-                issues.append(_issue(k, "temp", "critical", f"{lab}: muy caliente, {t} °C", f"El máximo recomendado es {crit} °C."))
+                issues.append(_issue(k, "temp", "critical", _("{lab}: muy caliente, {t} °C", lab=lab, t=t), _("El máximo recomendado es {crit} °C.", crit=crit)))
             elif t >= warn:
-                issues.append(_issue(k, "temp", "warning", f"{lab}: temperatura alta, {t} °C", f"Se avisa desde {warn} °C."))
+                issues.append(_issue(k, "temp", "warning", _("{lab}: temperatura alta, {t} °C", lab=lab, t=t), _("Se avisa desde {warn} °C.", warn=warn)))
 
         # sectores
         if (v := c.get("pending")) and v >= th["pending_crit"]:
-            issues.append(_issue(k, "pending", "critical", f"{lab}: {v} sectores ilegibles",
-                                 "Sectores que el disco no logra leer (Current_Pending_Sector). Suele anticipar una falla."))
+            issues.append(_issue(k, "pending", "critical", _("{lab}: {v} sectores ilegibles", lab=lab, v=v),
+                                 _("Sectores que el disco no logra leer (Current_Pending_Sector). Suele anticipar una falla.")))
         if (v := c.get("offline_uncorrectable")) and v >= th["uncorrectable_crit"]:
-            issues.append(_issue(k, "offline_unc", "critical", f"{lab}: {v} sectores dañados sin corrección",
+            issues.append(_issue(k, "offline_unc", "critical", _("{lab}: {v} sectores dañados sin corrección", lab=lab, v=v),
                                  "Offline_Uncorrectable."))
         if (v := c.get("reallocated")) is not None and v >= th["reallocated_warn"]:
             sev = "critical" if v >= th["reallocated_crit"] else "warning"
-            issues.append(_issue(k, "reallocated", sev, f"{lab}: {v} sectores dañados reemplazados",
-                                 f"Reallocated_Sector_Ct. Crítico desde {th['reallocated_crit']}."))
+            issues.append(_issue(k, "reallocated", sev, _("{lab}: {v} sectores dañados reemplazados", lab=lab, v=v),
+                                 _("Reallocated_Sector_Ct. Crítico desde {n}.", n=th["reallocated_crit"])))
         if (v := c.get("reported_uncorrect")) and v >= th["reported_uncorrect_warn"]:
-            issues.append(_issue(k, "reported_unc", "warning", f"{lab}: {v} lecturas fallidas",
+            issues.append(_issue(k, "reported_unc", "warning", _("{lab}: {v} lecturas fallidas", lab=lab, v=v),
                                  "Reported_Uncorrect."))
         # SAS
         if (v := c.get("grown_defects")):
             issues.append(_issue(k, "grown_defects", "critical" if v >= th["reallocated_crit"] else "warning",
-                                 f"{lab}: {v} defectos crecidos (grown defect list)"))
+                                 _("{lab}: {v} defectos crecidos (grown defect list)", lab=lab, v=v)))
         unc = sum(c.get(f"uncorrected_{x}") or 0 for x in ("read", "write", "verify"))
         if unc:
-            issues.append(_issue(k, "scsi_unc", "warning", f"{lab}: {unc} errores de E/S sin corregir"))
+            issues.append(_issue(k, "scsi_unc", "warning", _("{lab}: {v} errores de E/S sin corregir", lab=lab, v=unc)))
         # SSD / NVMe
         if (v := c.get("percentage_used")) is not None:
             if v >= th["ssd_wear_crit"]:
-                issues.append(_issue(k, "wear", "critical", f"{lab}: desgaste {v}% de la vida útil"))
+                issues.append(_issue(k, "wear", "critical", _("{lab}: desgaste {v}% de la vida útil", lab=lab, v=v)))
             elif v >= th["ssd_wear_warn"]:
-                issues.append(_issue(k, "wear", "warning", f"{lab}: desgaste {v}% de la vida útil"))
+                issues.append(_issue(k, "wear", "warning", _("{lab}: desgaste {v}% de la vida útil", lab=lab, v=v)))
         if c.get("critical_warning"):
             issues.append(_issue(k, "nvme_critical", "critical",
                                  f"{lab}: NVMe critical_warning = {c['critical_warning']:#04x}"))
         spare, spare_t = c.get("available_spare"), c.get("available_spare_threshold")
         if spare is not None and (spare <= (spare_t or 0) or spare < th["nvme_spare_warn"]):
             issues.append(_issue(k, "nvme_spare", "critical" if spare <= (spare_t or 0) else "warning",
-                                 f"{lab}: reserva disponible {spare}%"))
+                                 _("{lab}: reserva disponible {v}%", lab=lab, v=spare)))
         if (v := c.get("media_errors")):
-            issues.append(_issue(k, "media_errors", "warning", f"{lab}: {v} errores de medio (NVMe)"))
+            issues.append(_issue(k, "media_errors", "warning", _("{lab}: {v} errores de medio (NVMe)", lab=lab, v=v)))
 
         # pruebas SMART: la última terminada
         logs = (d.get("selftest") or {}).get("log") or []
         last = next((x for x in logs if x.get("passed") is not None), None)
         if last and last["passed"] is False:
-            issues.append(_issue(k, "selftest", "critical", f"{lab}: falló la prueba SMART",
-                                 f"{last.get('type')}: {last.get('status')} (hora {last.get('hours')})"))
+            issues.append(_issue(k, "selftest", "critical", _("{lab}: falló la prueba SMART", lab=lab),
+                                 _("{type}: {status} (hora {hours})", type=last.get("type"), status=last.get("status"), hours=last.get("hours"))))
         if last and last.get("hours") is not None:
             sig = f"{last.get('hours')}|{last.get('type')}|{last.get('status')}"
             prev = last_selftests.get(k)
             if prev is not None and prev != sig:
                 events.append(_issue(k, "selftest_done", "info" if last["passed"] else "critical",
-                                     f"{lab}: prueba SMART {TEST_ES.get(str(last.get('type')).lower(), last.get('type'))} "
-                                     + ("terminada sin problemas" if last["passed"] else "con errores"),
+                                     (_("{lab}: prueba SMART {test} terminada sin problemas", lab=lab, test=test_name(last.get("type")))
+                                      if last["passed"] else
+                                      _("{lab}: prueba SMART {test} con errores", lab=lab, test=test_name(last.get("type")))),
                                      last.get("status") or "", kind="event"))
 
         # contadores que suben → evento puntual
@@ -207,55 +219,56 @@ def evaluate(disks: list[dict], pools: list[dict], fss: list[dict], settings: di
                               ("media_errors", "errores de medio (NVMe)", "warning")):
             now_v, old_v = c.get(ck), prev.get(ck)
             if now_v is not None and old_v is not None and now_v > old_v:
-                events.append(_issue(k, f"inc_{ck}", sev, f"{lab}: más {name} ({old_v} → {now_v})",
+                events.append(_issue(k, f"inc_{ck}", sev, _("{lab}: más {name} ({old} → {new})", lab=lab, name=_(name), old=old_v, new=now_v),
                                      kind="event"))
 
     # discos que estaban y ya no aparecen
     for k, info in known.items():
         if k not in present and k not in ignored:
             issues.append(_issue(k, "missing", "critical",
-                                 f"Desapareció un disco: {info.get('model', '?')}",
-                                 (f"Serie {info.get('serial')}. " if info.get("serial") else "") + f"Era {info.get('dev')}, visto por última vez el "
-                                 f"{time.strftime('%d-%m-%Y %H:%M', time.localtime(info.get('last_seen', 0)))}"))
+                                 _("Desapareció un disco: {model}", model=info.get("model", "?")),
+                                 (_("Serie {serial}. ", serial=info.get("serial")) if info.get("serial") else "")
+                                 + _("Era {dev}, visto por última vez el {when}", dev=info.get("dev"),
+                                     when=time.strftime("%d-%m-%Y %H:%M", time.localtime(info.get("last_seen", 0))))))
 
     # ZFS
     for p in pools:
         subj = f"zpool:{p['name']}"
         if p.get("error"):
-            issues.append(_issue(subj, "zfs_error", "warning", "No se pudo leer el estado de ZFS", p["error"]))
+            issues.append(_issue(subj, "zfs_error", "warning", _("No se pudo leer el estado de ZFS"), p["error"]))
             continue
         if p["health"] != "ONLINE":
             sev = "critical"    # DEGRADED incluido: en raidz1/mirror ya no queda redundancia
-            bad = [f"{_vname(v)}: {VDEV_STATE.get(v['state'], v['state'])}" for v in p["vdevs"]
+            bad = [f"{_vname(v)}: {_(VDEV_STATE[v['state']]) if v['state'] in VDEV_STATE else v['state']}" for v in p["vdevs"]
                    if v["state"] not in ("ONLINE", "AVAIL", "INUSE") and v.get("depth", 0) > 0]
             bad = [b for b, v in zip(bad, [v for v in p["vdevs"] if v["state"] not in ("ONLINE", "AVAIL", "INUSE")
                                            and v.get("depth", 0) > 0]) if v.get("disk")] or bad
-            issues.append(_issue(subj, "zfs_state", sev, f"Pool {p['name']}: {POOL_STATE.get(p['health'], p['health'])}",
+            issues.append(_issue(subj, "zfs_state", sev, _("Pool {pool}: {state}", pool=p["name"], state=pool_state(p["health"])),
                                  "; ".join(bad) or p.get("status", "")))
         errs = [v for v in p["vdevs"] if (v["read"] or 0) + (v["write"] or 0) + (v["cksum"] or 0) > 0]
         if errs:
-            issues.append(_issue(subj, "zfs_vdev_errors", "warning", f"Pool {p['name']}: errores en los discos",
-                                 "; ".join(f"{_vname(v)}: {v['read']} de lectura, {v['write']} de escritura, {v['cksum']} de checksum"
+            issues.append(_issue(subj, "zfs_vdev_errors", "warning", _("Pool {pool}: errores en los discos", pool=p["name"]),
+                                 "; ".join(_("{disk}: {r} de lectura, {w} de escritura, {c} de checksum", disk=_vname(v), r=v["read"], w=v["write"], c=v["cksum"])
                                            for v in errs)))
         if p.get("errors") and "No known data errors" not in p["errors"]:
-            issues.append(_issue(subj, "zfs_data_errors", "critical", f"Pool {p['name']}: hay datos dañados",
+            issues.append(_issue(subj, "zfs_data_errors", "critical", _("Pool {pool}: hay datos dañados", pool=p["name"]),
                                  p["errors"]))
         sc = p.get("scrub") or {}
         if sc.get("kind") == "scrub" and not (sc.get("in_progress") or sc.get("paused")) and (sc.get("errors") or 0) > 0:
             issues.append(_issue(subj, "zfs_scrub_errors", "warning",
-                                 f"Pool {p['name']}: el último scrub encontró {sc['errors']} errores",
-                                 f"Reparado: {sc.get('repaired')}."))
+                                 _("Pool {pool}: el último scrub encontró {n} errores", pool=p["name"], n=sc["errors"]),
+                                 _("Reparado: {r}.", r=sc.get("repaired"))))
         if th.get("scrub_max_days") and not (sc.get("in_progress") or sc.get("paused")):
             age = (time.time() - sc["date"]) / 86400 if sc.get("date") else None
             if age is None or age > th["scrub_max_days"]:
                 issues.append(_issue(subj, "zfs_scrub_old", "warning",
-                                     f"Pool {p['name']}: sin scrub hace "
-                                     + (f"{age:.0f} días" if age is not None else "mucho tiempo"),
-                                     f"Se recomienda uno cada {th['scrub_max_days']} días o menos."))
+                                     (_("Pool {pool}: sin scrub hace {n} días", pool=p["name"], n=f"{age:.0f}")
+                                      if age is not None else _("Pool {pool}: sin scrub hace mucho tiempo", pool=p["name"])),
+                                     _("Se recomienda uno cada {n} días o menos.", n=th["scrub_max_days"])))
         if p.get("cap", 0) >= th["fs_crit"]:
-            issues.append(_issue(subj, "zfs_full", "critical", f"Pool {p['name']} casi lleno: {p['cap']}%", f"Quedan {human(p.get('free'))}."))
+            issues.append(_issue(subj, "zfs_full", "critical", _("Pool {pool} casi lleno: {pct}%", pool=p["name"], pct=p["cap"]), _("Quedan {free}.", free=human(p.get("free")))))
         elif p.get("cap", 0) >= th["fs_warn"]:
-            issues.append(_issue(subj, "zfs_full", "warning", f"Pool {p['name']} casi lleno: {p['cap']}%", f"Quedan {human(p.get('free'))}."))
+            issues.append(_issue(subj, "zfs_full", "warning", _("Pool {pool} casi lleno: {pct}%", pool=p["name"], pct=p["cap"]), _("Quedan {free}.", free=human(p.get("free")))))
 
     # sistemas de archivos (los zfs ya se cubren por el pool)
     for f in fss:
@@ -263,11 +276,11 @@ def evaluate(disks: list[dict], pools: list[dict], fss: list[dict], settings: di
             continue
         subj = f"fs:{f['mount']}"
         if f["pct"] >= th["fs_crit"]:
-            issues.append(_issue(subj, "fs_full", "critical", f"{f['mount']} casi lleno: {f['pct']:.0f}%",
-                                 f"Quedan {human(f['avail'])} libres ({f['source']})."))
+            issues.append(_issue(subj, "fs_full", "critical", _("{mount} casi lleno: {pct}%", mount=f["mount"], pct=f"{f['pct']:.0f}"),
+                                 _("Quedan {free} libres ({src}).", free=human(f["avail"]), src=f["source"])))
         elif f["pct"] >= th["fs_warn"]:
-            issues.append(_issue(subj, "fs_full", "warning", f"{f['mount']} casi lleno: {f['pct']:.0f}%",
-                                 f"Quedan {human(f['avail'])} libres ({f['source']})."))
+            issues.append(_issue(subj, "fs_full", "warning", _("{mount} casi lleno: {pct}%", mount=f["mount"], pct=f"{f['pct']:.0f}"),
+                                 _("Quedan {free} libres ({src}).", free=human(f["avail"]), src=f["source"])))
 
     # un mismo problema puede salir dos veces (p.ej. temp) → quedarse con el más grave
     ids = {d["key"]: ident(d) for d in disks}

@@ -1,66 +1,69 @@
 # Disk Monitor
 
-Versión 1.1 · [KqK.cl](https://kqk.cl)
+**English** · [Español](README.es.md)
 
-Panel web autoalojado que vigila los **discos físicos** de un servidor Linux y avisa cuando algo anda mal.
+Version 1.2 · [KqK.cl](https://kqk.cl)
 
-- Estado **SMART** de cada disco: salud, temperatura, horas de uso, sectores reasignados/pendientes, errores CRC, desgaste de SSD/NVMe, pruebas SMART.
-- Estado de **pools ZFS** (si existen): salud, errores por vdev, ocupación y avance del scrub; se puede iniciar, pausar o detener un scrub desde el panel.
-- **Espacio** de los sistemas de archivos montados.
-- **Detección automática de discos**: al iniciar, bajo demanda y con un sondeo periódico; avisa de discos nuevos o que desaparecen.
-- **Tareas programadas** con horarios simples (cada N minutos, a diario, ciertos días, una vez al mes, «el 2º domingo»…): revisión de discos, **pruebas SMART**, **scrub de ZFS** y resumen del estado. Cada una se activa con un interruptor y se puede ejecutar al instante.
-- **Avisos claros**: qué pasó, qué significa y qué hacer, con modelo y serie del disco para ubicarlo. Por Telegram, correo (SMTP) y más de 100 servicios vía [Apprise](https://github.com/caronc/apprise) (Discord, Slack, ntfy, Pushover, Gotify, Matrix, Teams…).
-- Historial de temperaturas, alertas y avisos enviados.
+Self-hosted web dashboard that watches the **physical disks** of a Linux server and notifies you when something goes wrong.
 
-Todo corre en un único contenedor Docker; el host no necesita tener instalado `smartmontools` ni nada más.
+- **SMART** status of every disk: health, temperature, power-on hours, reallocated/pending sectors, CRC errors, SSD/NVMe wear, SMART tests.
+- **ZFS pool** status (if any): health, per-vdev errors, usage and scrub progress; scrubs can be started, paused or stopped from the dashboard.
+- **Space** on mounted file systems.
+- **Automatic disk detection**: at startup, on demand and with a periodic probe; notifies about new or missing disks.
+- **Scheduled tasks** with simple schedules (every N minutes, daily, certain weekdays, once a month, "the 2nd Sunday"…): disk check, **SMART tests**, **ZFS scrub** and status summary. Each one has an on/off switch and can be run right away.
+- **Clear notifications**: what happened, what it means and what to do, with the disk's model and serial number so you can find it. Via Telegram, email (SMTP) and 100+ services through [Apprise](https://github.com/caronc/apprise) (Discord, Slack, ntfy, Pushover, Gotify, Matrix, Teams…).
+- Temperature, alert and notification history.
+- Interface and notifications in **English or Spanish**.
 
----
-
-## Índice
-
-1. [Requisitos](#1-requisitos)
-2. [Instalación rápida](#2-instalación-rápida)
-3. [Instalación manual paso a paso](#3-instalación-manual-paso-a-paso)
-4. [Primer ingreso y verificación](#4-primer-ingreso-y-verificación)
-5. [Configurar las alertas](#5-configurar-las-alertas)
-6. [Configuración general](#6-configuración-general)
-7. [Publicarlo con un dominio (proxy inverso)](#7-publicarlo-con-un-dominio-proxy-inverso)
-8. [Instalarlo en varios servidores](#8-instalarlo-en-varios-servidores)
-9. [Mantenimiento](#9-mantenimiento)
-10. [Solución de problemas](#10-solución-de-problemas)
-11. [Seguridad](#11-seguridad)
-12. [Referencia](#12-referencia)
-- [Licencia](#licencia)
+Everything runs in a single Docker container; the host doesn't need `smartmontools` or anything else installed.
 
 ---
 
-## 1. Requisitos
+## Contents
 
-| Requisito | Detalle |
+1. [Requirements](#1-requirements)
+2. [Quick install](#2-quick-install)
+3. [Manual install, step by step](#3-manual-install-step-by-step)
+4. [First login and checks](#4-first-login-and-checks)
+5. [Setting up notifications](#5-setting-up-notifications)
+6. [General settings](#6-general-settings)
+7. [Publishing it on a domain (reverse proxy)](#7-publishing-it-on-a-domain-reverse-proxy)
+8. [Installing on several servers](#8-installing-on-several-servers)
+9. [Maintenance](#9-maintenance)
+10. [Troubleshooting](#10-troubleshooting)
+11. [Security](#11-security)
+12. [Reference](#12-reference)
+- [License](#license)
+
+---
+
+## 1. Requirements
+
+| Requirement | Details |
 |---|---|
-| Sistema | Linux x86_64 con acceso a los discos físicos (servidor físico, o VM con los discos/HBA pasados directamente) |
-| Docker | Docker Engine 20.10+ con el plugin **Compose** (`docker compose`) o `docker-compose` |
-| Permisos | Poder ejecutar `docker` (root o usuario del grupo `docker`) |
-| Puerto | Uno libre para la web (por defecto **8093**) |
-| Red | Salida a internet sólo para enviar avisos (Telegram, SMTP, etc.) y para construir la imagen |
-| Git | Para descargar y actualizar (`apt install git`). Sin git se puede usar el ZIP de GitHub (requiere `unzip`) |
+| System | Linux x86_64 with access to the physical disks (bare metal, or a VM with the disks/HBA passed through) |
+| Docker | Docker Engine 20.10+ with the **Compose** plugin (`docker compose`) or `docker-compose` |
+| Permissions | Able to run `docker` (root or a user in the `docker` group) |
+| Port | One free port for the web UI (**8093** by default) |
+| Network | Internet access only to send notifications (Telegram, SMTP, etc.) and to build the image |
+| Git | To download and update (`apt install git`). Without git you can use the GitHub ZIP (needs `unzip`) |
 
-Verifica Docker:
+Check Docker:
 
 ```sh
 docker --version
-docker compose version     # o: docker-compose --version
+docker compose version     # or: docker-compose --version
 ```
 
-Si no lo tienes, en Debian/Ubuntu: `curl -fsSL https://get.docker.com | sh`
+If you don't have it, on Debian/Ubuntu: `curl -fsSL https://get.docker.com | sh`
 
-**Hardware soportado**: discos SATA y SAS (directos o tras HBA), NVMe, discos detrás de controladoras RAID por hardware (MegaRAID/LSI, HP Smart Array `cciss`, Areca…) y discos USB con puente compatible. Los dispositivos que no entregan SMART (discos virtuales de VM, algunos USB) aparecen como "Sin SMART" y sólo se vigila que sigan presentes.
+**Supported hardware**: SATA and SAS disks (direct or behind an HBA), NVMe, disks behind hardware RAID controllers (MegaRAID/LSI, HP Smart Array `cciss`, Areca…) and USB disks with a compatible bridge. Devices that don't report SMART (VM virtual disks, some USB enclosures) show up as "No SMART" and only their presence is monitored.
 
 ---
 
-## 2. Instalación rápida
+## 2. Quick install
 
-Clona el repositorio y ejecuta el instalador:
+Clone the repository and run the installer:
 
 ```sh
 git clone https://github.com/r34lcl/Disk-Monitor.git disk-monitor
@@ -68,33 +71,35 @@ cd disk-monitor
 ./install.sh
 ```
 
-**Sin git**, con el ZIP de GitHub (el mismo de **Code → Download ZIP**). Se descomprime en `Disk-Monitor-main`, así que hay que renombrar la carpeta:
+**Without git**, using the GitHub ZIP (the same one as **Code → Download ZIP**). It extracts to `Disk-Monitor-main`, so rename the folder:
 
 ```sh
-wget https://github.com/r34lcl/Disk-Monitor/archive/refs/heads/main.zip          # o: curl -LO https://github.com/r34lcl/Disk-Monitor/archive/refs/heads/main.zip
+wget https://github.com/r34lcl/Disk-Monitor/archive/refs/heads/main.zip          # or: curl -LO https://github.com/r34lcl/Disk-Monitor/archive/refs/heads/main.zip
 unzip main.zip && mv Disk-Monitor-main disk-monitor
 cd disk-monitor
 sh install.sh
 ```
 
-El script:
+The script:
 
-1. Comprueba que Docker y Compose estén disponibles.
-2. Crea la carpeta `data/` y, si no existe, un archivo `.env` con usuario `admin` y una **contraseña aleatoria**.
-3. Construye la imagen y levanta el contenedor.
-4. Muestra la URL y las credenciales.
+1. Checks that Docker and Compose are available.
+2. Creates the `data/` folder and, if missing, an `.env` file with user `admin` and a **random password**.
+3. Builds the image and starts the container.
+4. Prints the URL and the credentials.
 
-Para usar otro puerto: `HOST_PORT=9000 ./install.sh`
+To use another port: `HOST_PORT=9000 ./install.sh`
 
-Luego sigue en la [sección 4](#4-primer-ingreso-y-verificación).
+The initial language follows the system `LANG` (English if it starts with `en`, otherwise Spanish). To force it: `APP_LANG=en ./install.sh`. It can be changed later from the web UI.
+
+Then continue with [section 4](#4-first-login-and-checks).
 
 ---
 
-## 3. Instalación manual paso a paso
+## 3. Manual install, step by step
 
-Si prefieres no usar el script:
+If you'd rather not use the script:
 
-**3.1. Descargar el código** (en la carpeta donde quieras instalarlo)
+**3.1. Download the code** (in the folder where you want it installed)
 
 ```sh
 git clone https://github.com/r34lcl/Disk-Monitor.git disk-monitor
@@ -102,7 +107,7 @@ cd disk-monitor
 mkdir -p data
 ```
 
-Estructura esperada:
+Expected layout:
 
 ```
 disk-monitor/
@@ -111,44 +116,46 @@ disk-monitor/
 ├── requirements.txt
 ├── VERSION
 ├── install.sh
-├── app/            (código)
-└── data/           (base de datos; se crea sola)
+├── app/            (code)
+└── data/           (database; created automatically)
 ```
 
-**3.2. Crear el archivo `.env`**
+**3.2. Create the `.env` file**
 
 ```sh
 cat > .env <<'EOF'
 APP_USER=admin
-APP_PASSWORD=pon-aqui-una-contraseña-larga
+APP_PASSWORD=put-a-long-password-here
 HOST_PORT=8093
-TZ=America/Santiago
+TZ=America/New_York
+APP_LANG=en
 EOF
 chmod 600 .env
 ```
 
-| Variable | Para qué sirve |
+| Variable | Purpose |
 |---|---|
-| `APP_USER` / `APP_PASSWORD` | Acceso a la web. `APP_PASSWORD` es obligatoria: si queda vacía, la web no abre y muestra cómo configurarla. Para usarlo sin contraseña (sólo en una red de confianza) agrega `AUTH_DISABLED=1`. |
-| `HOST_PORT` | Puerto del host donde se publica la web. |
-| `TZ` | Zona horaria de las tareas programadas y las fechas ([lista](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)). Por defecto `UTC`. |
+| `APP_USER` / `APP_PASSWORD` | Web UI login. `APP_PASSWORD` is required: if it's empty, the web UI won't open and shows how to set it. To run without a password (only on a trusted network) add `AUTH_DISABLED=1`. |
+| `HOST_PORT` | Host port where the web UI is published. |
+| `APP_LANG` | Initial language of the web UI and notifications: `es` (default) or `en`. Only used on first install; afterwards change it from the web UI. |
+| `TZ` | Time zone for scheduled tasks and dates ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)). Defaults to `UTC`. |
 
-Genera una contraseña con: `head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 18`
+Generate a password with: `head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 18`
 
-**3.3. Construir y levantar**
+**3.3. Build and start**
 
 ```sh
 docker compose up -d --build
 ```
 
-**3.4. Comprobar que arrancó**
+**3.4. Check that it started**
 
 ```sh
 docker compose ps
 docker compose logs --tail 20
 ```
 
-Deberías ver una línea como:
+You should see lines like these (the logs are in Spanish):
 
 ```
 INFO inventario inicial: 4 discos (sda, sdb, sdc, nvme0)
@@ -157,120 +164,122 @@ INFO revisión (inicio) en 1.2s: 4 discos, 0 problemas, 0 eventos
 
 ---
 
-## 4. Primer ingreso y verificación
+## 4. First login and checks
 
-1. Abre `http://IP-DEL-SERVIDOR:8093` e ingresa con el usuario y contraseña del `.env`.
-2. En el **Panel** revisa que aparezcan todos tus discos. Bajo la barra superior se muestra la versión de smartctl y de dónde se lee ZFS.
-3. Pulsa **Detectar discos** para ver el inventario: discos presentes, en reposo o ausentes.
-4. Haz clic en un disco para ver su detalle: atributos SMART completos, gráfico de temperatura, pruebas SMART y alertas. Desde ahí puedes lanzar una **prueba corta** para confirmar que todo funciona.
+1. Open `http://SERVER-IP:8093` and log in with the user and password from `.env`.
+2. On the **Dashboard**, check that all your disks are listed. Below the top bar you'll see the smartctl version and where ZFS is read from.
+3. Press **Detect disks** to see the inventory: present, standby or missing disks.
+4. Click a disk to see its details: full SMART attributes, temperature chart, SMART tests and alerts. From there you can run a **short test** to confirm everything works.
 
-Si falta algún disco, revisa la [sección 10](#10-solución-de-problemas).
+If a disk is missing, see [section 10](#10-troubleshooting).
 
 ---
 
-## 5. Configurar las alertas
+## 5. Setting up notifications
 
-Todo se configura en la pestaña **Configuración** y se guarda al pulsar **Guardar**. Cada canal tiene un botón **Enviar prueba**.
+Everything is configured in the **Settings** tab and saved with **Save**. Each channel has a **Send test** button.
 
 ### Telegram
 
-1. En Telegram habla con **@BotFather**, envía `/newbot` y sigue los pasos. Copia el **token** (`123456789:ABC...`).
-2. Obtén tu **chat ID**:
-   - Chat privado: escribe cualquier cosa a tu bot y abre
-     `https://api.telegram.org/bot<TOKEN>/getUpdates`; el número en `"chat":{"id":...}` es tu chat ID.
-   - Grupo: agrega el bot al grupo, escribe un mensaje y usa la misma URL; el ID empieza con `-100`.
-3. En Configuración → Telegram: marca **Activado**, pega token y chat ID(s) (varios separados por coma) y pulsa **Enviar prueba**.
+1. In Telegram, talk to **@BotFather**, send `/newbot` and follow the steps. Copy the **token** (`123456789:ABC...`).
+2. Get your **chat ID**:
+   - Private chat: send anything to your bot and open
+     `https://api.telegram.org/bot<TOKEN>/getUpdates`; the number in `"chat":{"id":...}` is your chat ID.
+   - Group: add the bot to the group, send a message and use the same URL; the ID starts with `-100`.
+3. In Settings → Telegram: tick **Enabled**, paste the token and chat ID(s) (several separated by commas) and press **Send test**.
 
-Opción **Avisos 🟡 sin sonido**: las advertencias llegan silenciosas; las críticas siempre suenan.
+**Silent warnings** option: 🟡 warnings arrive without sound; critical ones always make a sound.
 
-### Correo (SMTP)
+### Email (SMTP)
 
-| Proveedor | Servidor | Puerto | Seguridad |
+| Provider | Server | Port | Security |
 |---|---|---|---|
-| Gmail | `smtp.gmail.com` | 587 | STARTTLS (requiere [contraseña de aplicación](https://myaccount.google.com/apppasswords)) |
+| Gmail | `smtp.gmail.com` | 587 | STARTTLS (needs an [app password](https://myaccount.google.com/apppasswords)) |
 | Outlook / Microsoft 365 | `smtp.office365.com` | 587 | STARTTLS |
-| Servidor propio | el tuyo | 465 / 587 / 25 | SSL / STARTTLS / ninguna |
+| Your own server | yours | 465 / 587 / 25 | SSL / STARTTLS / none |
 
-Completa usuario, contraseña, remitente (opcional) y destinatarios separados por coma.
+Fill in username, password, sender (optional) and recipients separated by commas.
 
-### Otros servicios (Apprise)
+### Other services (Apprise)
 
-Una URL por línea. Ejemplos:
+One URL per line. Examples:
 
 ```
-discord://ID_WEBHOOK/TOKEN_WEBHOOK
-ntfy://ntfy.sh/mi-tema-secreto
-pover://CLAVE_USUARIO@TOKEN_APP
+discord://WEBHOOK_ID/WEBHOOK_TOKEN
+ntfy://ntfy.sh/my-secret-topic
+pover://USER_KEY@APP_TOKEN
 slack://TokenA/TokenB/TokenC
-gotify://mi-servidor/TOKEN
-mailto://usuario:clave@gmail.com
+gotify://my-server/TOKEN
+mailto://user:password@gmail.com
 ```
 
-Formatos de todos los servicios: <https://github.com/caronc/apprise/wiki>
+Formats for every service: <https://github.com/caronc/apprise/wiki>
 
-### Cómo se comportan los avisos
+### How notifications behave
 
-- **Problemas** (condiciones que persisten, como temperatura alta o un pool degradado): se avisa al aparecer, al empeorar, con un **recordatorio** cada N horas mientras siga (configurable; 0 = nunca) y al **resolverse**.
-- **Eventos** (cambios puntuales, como un contador de sectores que sube, errores CRC nuevos, un disco nuevo, una prueba SMART o un scrub terminado): se avisan una vez.
-- Cada problema trae una línea 👉 con **qué hacer** y, si es de un disco, su **modelo y número de serie** para encontrarlo en el gabinete.
-- Cada revisión envía **un solo mensaje** con todo lo nuevo, no uno por problema.
-- **Avisar desde**: elige si quieres advertencias 🟡 y críticos 🔴, o sólo críticos.
-- Una alerta activa se puede **Silenciar** (deja de enviar recordatorios; vuelve a avisar si empeora).
-- **Resumen del estado** (tarea opcional): envía el estado de todos los discos, pools y espacio, más las próximas tareas, aunque no haya problemas.
-- **Pruebas SMART y scrubs**: si terminan con errores siempre se avisa; si terminan bien, según la casilla «Avisar también cuando termina sin problemas» de cada tarea. El scrub avisa también **al empezar**, con la hora estimada de término según la duración del anterior. Los scrubs iniciados fuera de Disk Monitor (por ejemplo, por el cron del sistema) también se detectan y avisan al iniciar y al terminar (Configuración → Alertas).
-- **ZFS se vigila cada 5 minutos** (`zpool status`, que no despierta discos): si el pool se degrada o aparecen errores de lectura, escritura o checksum, el aviso llega de inmediato, sin esperar la próxima revisión completa.
+- **Problems** (conditions that persist, like high temperature or a degraded pool): you're notified when they appear, when they get worse, with a **reminder** every N hours while they last (configurable; 0 = never) and when they're **resolved**.
+- **Events** (one-off changes, like a sector counter going up, new CRC errors, a new disk, a finished SMART test or scrub): notified once.
+- Every problem comes with a 👉 line saying **what to do** and, for disks, the **model and serial number** so you can find it in the case.
+- Each check sends **a single message** with everything new, not one per problem.
+- **Notify from**: choose warnings 🟡 and critical 🔴, or critical only.
+- An active alert can be **Muted** (stops reminders; you're notified again if it gets worse).
+- **Status summary** (optional task): sends the status of all disks, pools and space, plus upcoming tasks, even when there are no problems.
+- **SMART tests and scrubs**: if they finish with errors you're always notified; if they pass, it depends on each task's "Also notify when it finishes without problems" option. Scrubs also notify **when they start**, with an estimated finish time based on the previous run. Scrubs started outside Disk Monitor (e.g. by the system cron) are detected too and notified when they start and finish (Settings → Alerts).
+- **ZFS is checked every 5 minutes** (`zpool status`, which doesn't wake disks): if a pool degrades or read, write or checksum errors show up, you're notified right away without waiting for the next full check.
 
 ---
 
-## 6. Configuración general
+## 6. General settings
 
-| Sección | Opciones |
+| Section | Options |
 |---|---|
-| Alertas | Desde qué gravedad avisar, recordatorios, avisos al resolverse, discos nuevos, pruebas y scrubs iniciados fuera de las tareas. |
-| Umbrales | Temperatura de HDD y SSD, sectores, desgaste de SSD, reserva de NVMe, uso de disco/pool y días máximos sin scrub de ZFS. |
-| General | Nombre del servidor en los avisos, URL pública (para el enlace en los mensajes), días de historial, montajes a ignorar, exportar/importar configuración. |
+| Alerts | Minimum severity, reminders, resolved notifications, new disks, tests and scrubs started outside the tasks. |
+| Thresholds | HDD and SSD temperature, sectors, SSD wear, NVMe spare, disk/pool usage and max days without a ZFS scrub. |
+| General | **Language** (English / Spanish) of the web UI and notifications, server name in notifications, public URL (for the link in messages), history retention, mounts to ignore, settings export/import. |
 
-### Tareas programadas (pestaña Tareas)
+The language can also be changed with the **ES | EN** selector next to the title, top left. It applies to the web UI and to notifications sent from then on (active problems are reworded on the next check, which runs automatically when you switch).
 
-Cada tarea tiene un interruptor para activarla, su horario en palabras («Los miércoles a las 04:00»), la próxima ejecución, el resultado de la última y un botón **Ejecutar ahora**. Con **Editar** se cambia el horario sin escribir cron:
+### Scheduled tasks (Tasks tab)
 
-| Repetir | Ejemplo |
+Each task has an on/off switch, its schedule in plain words ("Wednesdays at 04:00"), the next run, the result of the last one and a **Run now** button. **Edit** changes the schedule without writing cron:
+
+| Repeat | Example |
 |---|---|
-| Cada cierto tiempo | cada 30 minutos, cada 6 horas |
-| Todos los días | a las 01:00 |
-| Ciertos días de la semana | lunes, miércoles y viernes a las 04:00 |
-| Una vez al mes (día fijo) | el día 1 a las 01:00 |
-| Una vez al mes (p.ej. 2º domingo) | el segundo domingo a las 02:00 |
-| Avanzado (cron) | `0 9 * * 1-5` |
+| At an interval | every 30 minutes, every 6 hours |
+| Every day | at 01:00 |
+| Certain weekdays | Monday, Wednesday and Friday at 04:00 |
+| Once a month (fixed day) | on the 1st at 01:00 |
+| Once a month (e.g. 2nd Sunday) | the second Sunday at 02:00 |
+| Advanced (cron) | `0 9 * * 1-5` |
 
-Al editar se muestran las tres próximas ejecuciones. Las horas son las del servidor (`TZ` del `.env`).
+While editing, the next three runs are shown. Times are in the server's time zone (`TZ` in `.env`).
 
-| Tarea | Qué hace | Por defecto |
+| Task | What it does | Default |
 |---|---|---|
-| Revisión de discos | Lee SMART, ZFS y espacio; avisa si hay problemas. | cada 30 min |
-| Prueba SMART corta | Autodiagnóstico de 1–2 min, sin afectar el uso. | miércoles 04:00 |
-| Prueba SMART larga | Lee toda la superficie; en discos grandes tarda horas (12 TB ≈ 18–23 h). | desactivada, día 1 a la 01:00 |
-| Scrub ZFS | ZFS verifica y repara todos los datos del pool. No se inicia si el pool está degradado o ya hay un scrub/resilver en curso. | desactivada, 2º domingo 02:00 |
-| Resumen del estado | Envía el estado completo por los canales de aviso. | desactivada, lunes 09:00 |
+| Disk check | Reads SMART, ZFS and space; notifies if there are problems. | every 30 min |
+| Short SMART test | 1–2 min self-test, without affecting normal use. | Wednesday 04:00 |
+| Long SMART test | Reads the whole surface; on large disks it takes hours (12 TB ≈ 18–23 h). | disabled, 1st at 01:00 |
+| ZFS scrub | ZFS verifies and repairs all the data in the pool. Not started if the pool is degraded or a scrub/resilver is already running. | disabled, 2nd Sunday 02:00 |
+| Status summary | Sends the full status through the notification channels. | disabled, Monday 09:00 |
 
-**Servidores sin ZFS**: Disk Monitor detecta solo si hay pools (en cada revisión). Si no hay, la sección de pools no aparece, el botón **+ Scrub ZFS** se oculta y una tarea de scrub existente (por ejemplo, importada de otro servidor) queda **inactiva** sin dar errores; si más adelante se crea un pool, empieza a funcionar sola.
+**Servers without ZFS**: Disk Monitor detects pools by itself (on every check). If there are none, the pools section isn't shown, the **+ ZFS scrub** button is hidden and an existing scrub task (e.g. imported from another server) becomes **inactive** without errors; if a pool is created later, it starts working on its own.
 
-Con **+ Prueba SMART**, **+ Scrub ZFS** y **+ Resumen** se agregan más tareas (por ejemplo, una prueba larga sólo para ciertos discos). Si un scrub y una prueba larga quedan a menos de 24 h, la pestaña lo advierte.
+**+ SMART test**, **+ ZFS scrub** and **+ Summary** add more tasks (for example, a long test for certain disks only). If a scrub and a long test fall within 24 h of each other, the tab warns you.
 
-**Scrubs del sistema**: muchas distribuciones ya programan un scrub mensual (Ubuntu/Debian: `/etc/cron.d/zfsutils-linux`). Disk Monitor los detecta, los muestra en la pestaña Tareas con su horario en palabras y avisa cuando terminan. Si prefieres manejarlos desde Disk Monitor, activa la tarea **Scrub ZFS** y desactiva los del sistema con el comando que muestra la pestaña.
+**System scrubs**: many distributions already schedule a monthly scrub (Ubuntu/Debian: `/etc/cron.d/zfsutils-linux`). Disk Monitor detects them, shows them in the Tasks tab with their schedule in plain words and notifies when they finish. If you'd rather manage them from Disk Monitor, enable the **ZFS scrub** task and disable the system ones with the command shown in the tab.
 
-> La **prueba larga** y el **scrub** son pesados: prográmalos en horas de poco uso y separados entre sí y de los respaldos.
+> The **long test** and the **scrub** are heavy: schedule them at quiet hours, apart from each other and from your backups.
 
-**Ignorar un disco**: en su detalle, botón **Ignorar alertas de este disco**. Sigue apareciendo en el panel, pero no genera avisos.
+**Ignoring a disk**: in its details, **Ignore alerts for this disk**. It stays on the dashboard but doesn't generate notifications.
 
 ---
 
-## 7. Publicarlo con un dominio (proxy inverso)
+## 7. Publishing it on a domain (reverse proxy)
 
-La aplicación habla HTTP en el puerto configurado. Para usar HTTPS y un dominio, ponle delante un proxy inverso:
+The app speaks HTTP on the configured port. For HTTPS and a domain, put a reverse proxy in front of it:
 
-- **Nginx Proxy Manager / Traefik / Caddy**: crea un host apuntando a `http://IP-DEL-SERVIDOR:8093`.
-- **Nginx** a mano:
+- **Nginx Proxy Manager / Traefik / Caddy**: create a host pointing to `http://SERVER-IP:8093`.
+- **Nginx** by hand:
 
   ```nginx
   location / {
@@ -281,146 +290,146 @@ La aplicación habla HTTP en el puerto configurado. Para usar HTTPS y un dominio
   }
   ```
 
-Con `X-Forwarded-Proto: https` la cookie de sesión se marca como segura. Después pon la URL pública en Configuración → General para que los avisos incluyan el enlace.
+With `X-Forwarded-Proto: https` the session cookie is marked secure. Then set the public URL in Settings → General so notifications include the link.
 
-Si sólo lo usarás detrás del proxy, puedes publicar el puerto únicamente en localhost cambiando en `docker-compose.yml` la línea de `ports` por `"127.0.0.1:${HOST_PORT:-8093}:8000"`.
-
----
-
-## 8. Instalarlo en varios servidores
-
-Clona el repositorio en cada servidor siguiendo la [sección 2](#2-instalación-rápida). Cada instalación es independiente y detecta sus propios discos al iniciar.
-
-**Copiar la configuración** (canales, umbrales, horarios) de un servidor a otro:
-
-1. En el servidor de origen: Configuración → General → **Exportar configuración**. Usa **Exportar sin contraseñas** si el archivo va a circular.
-2. En el nuevo: Configuración → General → **Importar…**
-
-No se copian el nombre del servidor, la URL ni los discos ignorados, porque son propios de cada equipo. Si importas una exportación sin contraseñas, se conservan las que ya tenga el destino.
-
-Pon un **nombre de servidor** distinto en cada uno (Configuración → General) para distinguir de dónde viene cada aviso; por defecto se usa el hostname.
+If you'll only use it behind the proxy, you can publish the port on localhost only by changing the `ports` line in `docker-compose.yml` to `"127.0.0.1:${HOST_PORT:-8093}:8000"`.
 
 ---
 
-## 9. Mantenimiento
+## 8. Installing on several servers
 
-| Tarea | Comando (dentro de la carpeta `disk-monitor`) |
+Clone the repository on each server following [section 2](#2-quick-install). Each install is independent and detects its own disks at startup.
+
+**Copying settings** (channels, thresholds, schedules) from one server to another:
+
+1. On the source server: Settings → General → **Export settings**. Use **Export without passwords** if the file will be passed around.
+2. On the new one: Settings → General → **Import…**
+
+The server name, URL and ignored disks are not copied, since they belong to each machine. If you import an export without passwords, the destination keeps the ones it already has.
+
+Give each one a different **server name** (Settings → General) to tell where each notification comes from; the hostname is used by default.
+
+---
+
+## 9. Maintenance
+
+| Task | Command (inside the `disk-monitor` folder) |
 |---|---|
-| Ver logs | `docker compose logs -f` |
-| Reiniciar | `docker compose restart` |
-| Aplicar cambios del `.env` | `docker compose up -d` (con `restart` **no** se recargan las variables) |
-| Actualizar a una versión nueva | `git pull && ./install.sh` (se conservan `data/` y `.env`, que git no toca). Si instalaste con el ZIP: descarga el nuevo, descomprímelo y copia su contenido sobre la carpeta (`unzip -o main.zip && cp -r Disk-Monitor-main/. disk-monitor/`), luego `cd disk-monitor && sh install.sh`. Los horarios de versiones anteriores se convierten solos en tareas. |
-| Detener | `docker compose down` |
-| Respaldar | copia `data/disk-monitor.db` y `.env` |
-| Cambiar la contraseña | edita `APP_PASSWORD` en `.env` y luego `docker compose up -d` (cierra las sesiones abiertas) |
-| Desinstalar | `docker compose down --rmi local` y borra la carpeta |
+| View logs | `docker compose logs -f` |
+| Restart | `docker compose restart` |
+| Apply `.env` changes | `docker compose up -d` (`restart` does **not** reload the variables) |
+| Update to a new version | `git pull && ./install.sh` (`data/` and `.env` are kept; git doesn't touch them). If you installed from the ZIP: download the new one, extract it and copy its contents over the folder (`unzip -o main.zip && cp -r Disk-Monitor-main/. disk-monitor/`), then `cd disk-monitor && sh install.sh`. Schedules from older versions are converted to tasks automatically. |
+| Stop | `docker compose down` |
+| Back up | copy `data/disk-monitor.db` and `.env` |
+| Change the password | edit `APP_PASSWORD` in `.env`, then `docker compose up -d` (logs out open sessions) |
+| Uninstall | `docker compose down --rmi local` and delete the folder |
 
-El historial se depura solo según los "días de historial" configurados (120 por defecto).
+History is pruned automatically according to the configured retention (120 days by default).
 
 ---
 
-## 10. Solución de problemas
+## 10. Troubleshooting
 
-**No aparece ningún disco / "no se puede leer SMART"**
-- El contenedor debe correr con `privileged: true` y con `/dev` montado (ya viene así en el `docker-compose.yml`).
-- En una VM, los discos virtuales no tienen SMART: pasa el disco o la HBA completa (passthrough) a la VM, o instala Disk Monitor en el hipervisor.
-- Comprueba desde dentro del contenedor:
+**No disks show up / "can't read SMART"**
+- The container must run with `privileged: true` and `/dev` mounted (already set in `docker-compose.yml`).
+- In a VM, virtual disks have no SMART: pass the disk or the whole HBA through to the VM, or install Disk Monitor on the hypervisor.
+- Check from inside the container:
   ```sh
   docker exec disk-monitor smartctl --scan-open
   docker exec disk-monitor smartctl -x /dev/sda
   ```
 
-**Discos detrás de una controladora RAID no aparecen**
-`smartctl --scan-open` detecta MegaRAID/cciss/Areca de forma automática. Si tu controladora no aparece, puede que el firmware no exponga SMART a través del arreglo; revisa la documentación de smartctl para tu modelo (`-d megaraid,N`, `-d cciss,N`, etc.).
+**Disks behind a RAID controller don't show up**
+`smartctl --scan-open` detects MegaRAID/cciss/Areca automatically. If your controller doesn't show up, its firmware may not expose SMART through the array; check the smartctl documentation for your model (`-d megaraid,N`, `-d cciss,N`, etc.).
 
-**Un disco aparece "En reposo"**
-Está detenido (spin-down) y, con la opción "No despertar discos en reposo", se muestra su última lectura. Desactívala si prefieres leerlo siempre (lo despertará en cada revisión).
+**A disk shows as "Standby"**
+It's spun down and, with the "Don't wake sleeping disks" option, its last reading is shown. Turn the option off if you'd rather always read it (it will wake it on every check).
 
-**ZFS no aparece**
-Sólo se muestra si el host tiene el módulo ZFS cargado (`/dev/zfs`). El panel indica si se usa el `zpool` del host o el del contenedor. Para comprobarlo: `docker exec disk-monitor zpool status`.
+**ZFS doesn't show up**
+It's only shown if the host has the ZFS module loaded (`/dev/zfs`). The dashboard shows whether the host's or the container's `zpool` is used. To check: `docker exec disk-monitor zpool status`.
 
-**No llegan los avisos**
-- Usa **Enviar prueba** en cada canal; el resultado y el error aparecen en pantalla.
-- En la pestaña **Actividad** está el detalle de cada envío.
-- Revisa que el servidor tenga salida a internet y DNS desde Docker: `docker exec disk-monitor getent hosts api.telegram.org`
+**Notifications don't arrive**
+- Use **Send test** on each channel; the result and the error are shown on screen.
+- The **Activity** tab has the details of every send.
+- Check that the server has internet access and DNS from Docker: `docker exec disk-monitor getent hosts api.telegram.org`
 
-**Las horas de las tareas están desfasadas**
-Ajusta `TZ` en el `.env` y aplica con `docker compose up -d`.
+**Task times are off**
+Set `TZ` in `.env` and apply with `docker compose up -d`.
 
-**El puerto está ocupado**
-Cambia `HOST_PORT` en el `.env` y ejecuta `docker compose up -d`.
-
----
-
-## 11. Seguridad
-
-- El contenedor es **privilegiado** (tiene acceso total al hardware del host). Trata la web como un panel de administración: contraseña fuerte y sin exponerla directamente a internet. Usa un proxy inverso con HTTPS, una VPN o publica el puerto sólo en la red interna.
-- El login bloquea por 15 minutos una IP tras 10 intentos fallidos.
-- Las contraseñas de Telegram y SMTP se guardan en `data/disk-monitor.db` y la web nunca las muestra (aparecen enmascaradas). Protege esa carpeta y el `.env` (`chmod 600 .env`).
-- La exportación de configuración **incluye** los secretos, salvo que uses "Exportar sin contraseñas".
+**The port is in use**
+Change `HOST_PORT` in `.env` and run `docker compose up -d`.
 
 ---
 
-## 12. Referencia
+## 11. Security
 
-**Qué detecta**
+- The container is **privileged** (full access to the host hardware). Treat the web UI as an admin panel: strong password and no direct exposure to the internet. Use a reverse proxy with HTTPS, a VPN, or publish the port on the internal network only.
+- Login blocks an IP for 15 minutes after 10 failed attempts.
+- Telegram and SMTP passwords are stored in `data/disk-monitor.db` and the web UI never shows them (they appear masked). Protect that folder and `.env` (`chmod 600 .env`).
+- The settings export **includes** secrets, unless you use "Export without passwords".
 
-| Origen | Gravedad | Condición |
+---
+
+## 12. Reference
+
+**What it detects**
+
+| Source | Severity | Condition |
 |---|---|---|
-| SMART | 🔴 | El disco reporta FAILED, o un atributo de pre-falla está bajo el umbral |
-| SMART | 🔴 | Sectores pendientes o incorregibles; la última prueba SMART falló |
-| SMART | 🟡 / 🔴 | Sectores reasignados (umbrales de aviso y crítico) |
-| SMART | 🟡 / 🔴 | Temperatura (umbrales distintos para HDD y SSD/NVMe) |
-| SSD/NVMe | 🟡 / 🔴 | Desgaste, reserva disponible, `critical_warning`, errores de medio |
-| SAS | 🟡 / 🔴 | Lista de defectos crecida, errores de E/S sin corregir |
-| Eventos | 🟡 | Sube algún contador: reasignados, pendientes, CRC, log de errores, bloques malos… |
-| Inventario | 🔴 / 🔵 | Desaparece un disco conocido / aparece un disco nuevo |
-| ZFS | 🔴 | Pool no ONLINE (incluye DEGRADED) o errores de datos |
-| ZFS | 🟡 | Errores de lectura/escritura/checksum en vdevs, errores en el último scrub, scrub antiguo |
-| Espacio | 🟡 / 🔴 | Sistema de archivos o pool sobre el umbral de uso |
+| SMART | 🔴 | The disk reports FAILED, or a pre-fail attribute is below its threshold |
+| SMART | 🔴 | Pending or uncorrectable sectors; the last SMART test failed |
+| SMART | 🟡 / 🔴 | Reallocated sectors (warning and critical thresholds) |
+| SMART | 🟡 / 🔴 | Temperature (separate thresholds for HDD and SSD/NVMe) |
+| SSD/NVMe | 🟡 / 🔴 | Wear, available spare, `critical_warning`, media errors |
+| SAS | 🟡 / 🔴 | Grown defect list, uncorrected I/O errors |
+| Events | 🟡 | A counter goes up: reallocated, pending, CRC, error log, bad blocks… |
+| Inventory | 🔴 / 🔵 | A known disk disappears / a new disk shows up |
+| ZFS | 🔴 | Pool not ONLINE (including DEGRADED) or data errors |
+| ZFS | 🟡 | Read/write/checksum errors on vdevs, errors in the last scrub, old scrub |
+| Space | 🟡 / 🔴 | File system or pool above the usage threshold |
 
-**Por qué el contenedor necesita privilegios**
+**Why the container needs privileges**
 
-| Opción | Motivo |
+| Option | Reason |
 |---|---|
-| `privileged: true` | `smartctl` envía comandos directos a los discos y a las controladoras. |
-| `/dev:/dev` | Acceso a `/dev/sdX`, `/dev/nvmeX`, `/dev/zfs` y `/dev/disk/by-id`. |
-| `pid: host` | Leer los montajes y el espacio libre del host (`/proc/1`) y usar su `zpool` (`nsenter`). |
-| `/run/udev` (sólo lectura) | Datos de udev para identificar modelos y números de serie. Si no existe en el host no pasa nada. |
+| `privileged: true` | `smartctl` sends commands directly to the disks and controllers. |
+| `/dev:/dev` | Access to `/dev/sdX`, `/dev/nvmeX`, `/dev/zfs` and `/dev/disk/by-id`. |
+| `pid: host` | Read the host's mounts and free space (`/proc/1`) and use its `zpool` (`nsenter`). |
+| `/run/udev` (read-only) | udev data to identify models and serial numbers. Harmless if it doesn't exist on the host. |
 
-**API** (para scripts y monitoreo externo; acepta Basic Auth con las credenciales del `.env`):
+**API** (for scripts and external monitoring; accepts Basic Auth with the `.env` credentials):
 
-| Método | Ruta | Uso |
+| Method | Path | Use |
 |---|---|---|
-| GET | `/health` | Sin autenticación. Devuelve `{"ok": true, "last_check": <epoch>}` |
-| GET | `/api/status` | Estado completo: discos, pools, sistemas de archivos y alertas activas |
-| GET | `/api/inventory` | Inventario de discos (presentes y ausentes) |
-| POST | `/api/check` | Lanzar una revisión |
-| POST | `/api/discover` | Detectar discos y revisar |
-| POST | `/api/selftest` | `{"type": "short"\|"long", "disks": [claves]}` |
-| GET | `/api/tasks` | Tareas programadas con próxima y última ejecución |
-| POST | `/api/tasks/{id}/run` | Ejecutar una tarea ahora (`check`, `smart-short`, `scrub`, `report`…) |
+| GET | `/health` | No authentication. Returns `{"ok": true, "version": "1.2", "last_check": <epoch>, "language": "en"}` |
+| GET | `/api/status` | Full status: disks, pools, file systems and active alerts |
+| GET | `/api/inventory` | Disk inventory (present and missing) |
+| POST | `/api/check` | Run a check |
+| POST | `/api/discover` | Detect disks and check |
+| POST | `/api/selftest` | `{"type": "short"\|"long", "disks": [keys]}` |
+| GET | `/api/tasks` | Scheduled tasks with next and last run |
+| POST | `/api/tasks/{id}/run` | Run a task now (`check`, `smart-short`, `scrub`, `report`…) |
 | POST | `/api/zfs/{pool}/scrub` | `{"action": "start"\|"pause"\|"stop"}` |
-| GET | `/api/alerts` | Historial de alertas |
+| GET | `/api/alerts` | Alert history |
 
-Ejemplo: `curl -u admin:CONTRASEÑA -X POST http://localhost:8093/api/check`
+Example: `curl -u admin:PASSWORD -X POST http://localhost:8093/api/check`
 
-**Archivos**
+**Files**
 
-| Ruta | Contenido |
+| Path | Contents |
 |---|---|
-| `.env` | Credenciales, puerto y zona horaria |
-| `data/disk-monitor.db` | Base SQLite: configuración, inventario, historial, alertas y avisos |
-| `install.sh` | Instalación o actualización |
-| `VERSION` | Versión instalada (se muestra al pie de la web) |
+| `.env` | Credentials, port, time zone and initial language |
+| `data/disk-monitor.db` | SQLite database: settings, inventory, history, alerts and notifications |
+| `install.sh` | Install or update |
+| `VERSION` | Installed version (shown at the bottom of the web UI) |
 
 ---
 
-## Licencia
+## License
 
-Disk Monitor es software libre bajo la [Licencia Apache 2.0](LICENSE). Puedes usarlo, modificarlo, hacer forks y redistribuirlo, también con fines comerciales, siempre que:
+Disk Monitor is free software under the [Apache License 2.0](LICENSE). You may use, modify, fork and redistribute it, including for commercial purposes, as long as you:
 
-- conserves los archivos `LICENSE` y `NOTICE` en tu copia o versión derivada, con el crédito al proyecto original: **Disk Monitor de [KqK.cl](https://kqk.cl)** — <https://github.com/r34lcl/Disk-Monitor>;
-- indiques en los archivos que modifiques que fueron cambiados.
+- keep the `LICENSE` and `NOTICE` files in your copy or derived version, with credit to the original project: **Disk Monitor by [KqK.cl](https://kqk.cl)** — <https://github.com/r34lcl/Disk-Monitor>;
+- state in the files you modify that they were changed.
 
-Se entrega «tal cual», sin garantías. Ver el texto completo en `LICENSE`.
+It is provided "as is", without warranty. See the full text in `LICENSE`.

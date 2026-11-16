@@ -9,6 +9,8 @@ import re
 import subprocess
 import time
 
+from .i18n import _, get_lang
+
 log = logging.getLogger("disk-monitor")
 # el contenedor corre con pid: host → /proc/1 es el init del host (montajes, hostname, raíz)
 HOST_PROC = os.environ.get("HOST_PROC", "/proc/1")
@@ -583,25 +585,26 @@ def host_scrub_jobs() -> list[dict]:
             if expr:
                 p = expr.split()
                 if p[2] != "*" and p[4] != "*" and "date" not in ln:
-                    note = ("cron usa día del mes O día de la semana: esta línea corre ambos días, "
-                            "no sólo cuando coinciden")
+                    note = _("cron usa día del mes O día de la semana: esta línea corre ambos días, "
+                             "no sólo cuando coinciden")
                 elif "date +" in ln and "-eq" in ln:
-                    note = "se ejecuta sólo el día de la semana que comprueba el script"
+                    note = _("se ejecuta sólo el día de la semana que comprueba el script")
             elif "/cron." in f:
-                note = f"se ejecuta {'cada semana' if 'weekly' in f else 'cada mes' if 'monthly' in f else 'cada día'}"
+                note = _("se ejecuta cada semana") if "weekly" in f else _("se ejecuta cada mes") if "monthly" in f else _("se ejecuta cada día")
             out.append({"source": f, "line": ln[:200], "cron": expr, "note": note, "human": _cron_human(expr, ln)})
     for d in ("/etc/systemd/system/timers.target.wants",):
         try:
             for t in sorted(os.listdir(root + d)):
                 if "scrub" in t and "zfs" in t:
-                    out.append({"source": f"{d}/{t}", "line": t, "cron": None, "note": "timer de systemd activo"})
+                    out.append({"source": f"{d}/{t}", "line": t, "cron": None, "note": _("timer de systemd activo")})
         except OSError:
             pass
     return out
 
 
 def _cron_human(expr: str | None, line: str) -> str:
-    from .schedule import DOW, DOW_PL, NTH, describe, from_cron
+    from .schedule import DOW, DOW_EN, DOW_PL, NTH, NTH_EN, describe, from_cron
+    en = get_lang() == "en"
     if not expr:
         return ""
     mi, ho, dom, mon, dow = expr.split()
@@ -611,8 +614,12 @@ def _cron_human(expr: str | None, line: str) -> str:
     weeks = {"1-7": 1, "8-14": 2, "15-21": 3, "22-28": 4}
     if dom in weeks and dow == "*" and (m := re.search(r"date \+\\?%w\)?\s*\]?\s*-eq\s*([0-6])|%w\)\" -eq ([0-6])|-eq ([0-6])", line)):
         d = int(next(g for g in m.groups() if g is not None))
+        if en:
+            return f"On the {NTH_EN[weeks[dom]]} {DOW_EN[d]} of every month at {int(ho):02d}:{int(mi):02d}"
         return f"El {NTH[weeks[dom]]} {DOW[d]} de cada mes {at}"
     if dom.isdigit() and dow.isdigit() and 0 <= int(dow) <= 6:
+        if en:
+            return f"Every {DOW_EN[int(dow)]} and also on day {dom} of every month, at {int(ho):02d}:{int(mi):02d}"
         return f"Todos los {DOW_PL[int(dow)]} y además el día {dom} de cada mes, {at}"
     w = from_cron(expr)
     return describe(w) if w.get("freq") != "cron" else ""

@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 
 from . import collector, db, rules, worker
 from . import schedule as sched
+from .i18n import _, set_lang
 from .version import VERSION
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -24,8 +25,10 @@ APP_USER = os.environ.get("APP_USER", "admin")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 # sin contraseña la web queda abierta: sólo se permite si se pide explícitamente (AUTH_DISABLED=1)
 AUTH_DISABLED = not APP_PASSWORD and os.environ.get("AUTH_DISABLED", "").lower() in ("1", "true", "yes")
-NO_PASSWORD_MSG = ("Falta APP_PASSWORD en el archivo .env. Define una contraseña y aplica con "
-                   "'docker compose up -d' (o AUTH_DISABLED=1 para usarlo sin contraseña, no recomendado).")
+NO_PASSWORD_MSG = {"es": ("Falta APP_PASSWORD en el archivo .env. Define una contraseña y aplica con "
+                          "'docker compose up -d' (o AUTH_DISABLED=1 para usarlo sin contraseña, no recomendado)."),
+                   "en": ("APP_PASSWORD is missing in the .env file. Set a password and apply it with "
+                          "'docker compose up -d' (or AUTH_DISABLED=1 to run without a password, not recommended).")}
 SECRET_FIELDS = {("telegram", "bot_token"), ("email", "password")}
 MASK = "••••••••"
 
@@ -42,7 +45,7 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
 
 # ---------------- autenticación: cookie de sesión firmada (+ Basic Auth para scripts) ----------------
 SESSION_COOKIE = "dm_session"
-PUBLIC_PATHS = {"/health", "/login", "/api/login", "/favicon.svg"}
+PUBLIC_PATHS = {"/health", "/login", "/api/login", "/favicon.svg", "/i18n.js"}
 _fails: dict[str, list[float]] = {}
 
 
@@ -85,17 +88,19 @@ def _basic_ok(request: Request) -> bool:
 @app.middleware("http")
 async def auth(request: Request, call_next):
     path = request.url.path
+    lang = db.get_settings().get("language", "es")
+    set_lang(lang)
     if not APP_PASSWORD and not AUTH_DISABLED and path not in ("/health", "/favicon.svg"):
         if path.startswith("/api/"):
-            return JSONResponse({"detail": NO_PASSWORD_MSG}, status_code=503)
+            return JSONResponse({"detail": NO_PASSWORD_MSG[lang]}, status_code=503)
         return HTMLResponse(f"<!doctype html><meta charset=utf-8><title>Disk Monitor</title>"
                             f"<p style='font:16px system-ui;max-width:560px;margin:15vh auto;padding:16px'>"
-                            f"<b>Disk Monitor no está configurado.</b><br><br>{NO_PASSWORD_MSG}</p>", status_code=503)
+                            f"<b>{_('Disk Monitor no está configurado.')}</b><br><br>{NO_PASSWORD_MSG[lang]}</p>", status_code=503)
     if (AUTH_DISABLED or path in PUBLIC_PATHS
             or _valid_session(request.cookies.get(SESSION_COOKIE)) or _basic_ok(request)):
         return await call_next(request)
     if path.startswith("/api/"):
-        return JSONResponse({"detail": "no autenticado"}, status_code=401)
+        return JSONResponse({"detail": _("no autenticado")}, status_code=401)
     return RedirectResponse("/login", status_code=303)
 
 
@@ -112,13 +117,13 @@ async def login(request: Request, body: dict):
     now = time.time()
     recent = [t for t in _fails.get(ip, []) if now - t < 900]
     if len(recent) >= 10:
-        raise HTTPException(429, "demasiados intentos, espera unos minutos")
+        raise HTTPException(429, _("demasiados intentos, espera unos minutos"))
     user, pw = str(body.get("username", "")), str(body.get("password", ""))
     if not (secrets.compare_digest(user, APP_USER) and secrets.compare_digest(pw, APP_PASSWORD)):
         _fails[ip] = recent + [now]
         log.warning("login fallido desde %s (usuario %r)", ip, user[:40])
         await asyncio.sleep(1)
-        raise HTTPException(401, "usuario o contraseña incorrectos")
+        raise HTTPException(401, _("usuario o contraseña incorrectos"))
     _fails.pop(ip, None)
     max_age = 30 * 86400 if body.get("remember") else 12 * 3600
     resp = JSONResponse({"ok": True})
@@ -141,6 +146,11 @@ async def index():
     return FileResponse(os.path.join(STATIC, "index.html"), headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/i18n.js")
+async def i18n_js():
+    return FileResponse(os.path.join(STATIC, "i18n.js"), media_type="text/javascript", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/favicon.svg")
 async def favicon():
     return FileResponse(os.path.join(STATIC, "favicon.svg"), media_type="image/svg+xml")
@@ -149,7 +159,7 @@ async def favicon():
 @app.get("/health")
 async def health():
     st = db.get_state("last_status", {}) or {}
-    return {"ok": True, "version": VERSION, "last_check": st.get("ts")}
+    return {"ok": True, "version": VERSION, "last_check": st.get("ts"), "language": db.get_settings().get("language", "es")}
 
 
 # ---------------- estado ----------------
@@ -188,7 +198,7 @@ async def api_disk(key: str, days: int = 7):
     st = db.get_state("last_status", {}) or {}
     d = next((x for x in st.get("disks", []) if x["key"] == key), None)
     if not d:
-        raise HTTPException(404, "disco no encontrado")
+        raise HTTPException(404, _("disco no encontrado"))
     since = int(time.time() - min(days, 365) * 86400)
     hist = {n: db.get_metrics(key, n, since) for n in ("temp", "reallocated", "pending", "crc_errors", "percentage_used")}
     alerts = [a for a in db.list_alerts(500) if a["subject"] == key]
@@ -203,7 +213,7 @@ async def api_history(subject: str, name: str, days: int = 7):
 @app.post("/api/check")
 async def api_check():
     if worker.status["running"]:
-        raise HTTPException(409, "ya hay una revisión en curso")
+        raise HTTPException(409, _("ya hay una revisión en curso"))
     try:
         res = await worker.run_check("manual")
     except Exception as e:  # noqa: BLE001
@@ -216,7 +226,7 @@ async def api_check():
 async def api_discover():
     """Detección de discos bajo demanda: re-escanea el hardware y hace una revisión completa."""
     if worker.status["running"]:
-        raise HTTPException(409, "ya hay una revisión en curso")
+        raise HTTPException(409, _("ya hay una revisión en curso"))
     try:
         res = await worker.run_check("detección manual")
     except Exception as e:  # noqa: BLE001
@@ -247,7 +257,7 @@ async def api_inventory():
 async def api_selftest(body: dict):
     kind = body.get("type", "short")
     if kind not in ("short", "long", "conveyance"):
-        raise HTTPException(400, "tipo inválido")
+        raise HTTPException(400, _("tipo inválido"))
     keys = body.get("disks") or []
     res = await worker.run_selftests({"type": kind, "disks": keys})
     return {"results": res}
@@ -308,7 +318,13 @@ async def put_settings(body: dict):
             worker.validate_tasks(body["tasks"])
         except ValueError as e:
             raise HTTPException(400, str(e))
+    if "language" in body and body["language"] not in ("es", "en"):
+        raise HTTPException(400, _("idioma inválido"))
     s = db.save_settings(body)
+    set_lang(s.get("language"))
+    if body.get("language") and body["language"] != cur.get("language") and not worker.status["running"]:
+        # nueva revisión para que las alertas activas queden redactadas en el idioma elegido
+        asyncio.create_task(worker._safe(worker.run_check("cambio de idioma")))
     worker.wake.set()
     return {"settings": _masked(s)}
 
@@ -333,7 +349,7 @@ async def export_settings(include_secrets: int = 1):
 async def import_settings(body: dict):
     s = body.get("settings") if isinstance(body.get("settings"), dict) else None
     if not s or body.get("disk_monitor_settings") != 1:
-        raise HTTPException(400, "el archivo no es una exportación de Disk Monitor")
+        raise HTTPException(400, _("el archivo no es una exportación de Disk Monitor"))
     for k in ("server_name", "base_url", "ignored_disks"):
         s.pop(k, None)
     cur = db.get_settings()
@@ -343,7 +359,7 @@ async def import_settings(body: dict):
         try:
             worker.validate_tasks(s["tasks"])
         except ValueError as e:
-            raise HTTPException(400, f"tareas inválidas: {e}")
+            raise HTTPException(400, _("tareas inválidas: {e}", e=e))
     for sec, f in SECRET_FIELDS:   # si la exportación venía sin secretos, conservar los actuales
         if isinstance(s.get(sec), dict) and not s[sec].get(f):
             s[sec][f] = cur[sec].get(f, "")
@@ -374,9 +390,9 @@ async def api_task_run(task_id: str):
     try:
         started = worker.start_task(task_id)
     except KeyError:
-        raise HTTPException(404, "tarea no encontrada (¿guardaste los cambios?)")
+        raise HTTPException(404, _("tarea no encontrada (¿guardaste los cambios?)"))
     if not started:
-        raise HTTPException(409, f"hay otra tarea en curso ({worker.status['running_task']})")
+        raise HTTPException(409, _("hay otra tarea en curso ({t})", t=worker.status["running_task"]))
     return {"ok": True}
 
 
@@ -394,11 +410,11 @@ async def when_preview(body: dict):
 async def api_scrub(pool: str, body: dict):
     action = body.get("action", "start")
     if action not in ("start", "stop", "pause"):
-        raise HTTPException(400, "acción inválida")
+        raise HTTPException(400, _("acción inválida"))
     if action == "start":
         res = await worker.run_scrubs([pool], True, "manual")
         if not res:
-            raise HTTPException(404, "pool no encontrado")
+            raise HTTPException(404, _("pool no encontrado"))
         r = res[0]
         if not r["ok"]:
             raise HTTPException(409, r["msg"])
@@ -417,13 +433,13 @@ async def api_scrub(pool: str, body: dict):
 @app.post("/api/test/{channel}")
 async def test_channel(channel: str, body: dict | None = None):
     if channel not in ("telegram", "email", "apprise", "report"):
-        raise HTTPException(400, "canal inválido")
+        raise HTTPException(400, _("canal inválido"))
     s = db.get_settings()
     if channel == "report":
         msg = worker.report_message(s)
         return {"results": await worker.send(s, msg)}
-    name = {"telegram": "Telegram", "email": "el correo", "apprise": "Apprise"}[channel]
-    msg = {"title": f"{worker.server_name(s)} · Prueba de avisos", "severity": "ok",
-           "lead": f"Si lees esto, los avisos por {name} funcionan.", "sections": [],
+    name = {"telegram": "Telegram", "email": _("el correo"), "apprise": "Apprise"}[channel]
+    msg = {"title": f"{worker.server_name(s)} · " + _("Prueba de avisos"), "severity": "ok",
+           "lead": _("Si lees esto, los avisos por {name} funcionan.", name=name), "sections": [],
            "footer": time.strftime("%d-%m-%Y %H:%M:%S"), "link": s.get("base_url") or None}
     return {"results": await worker.send(s, msg, only=channel)}

@@ -6,6 +6,7 @@ import logging
 import time
 
 from . import collector, db, notifiers, rules
+from .i18n import _, set_lang
 from . import schedule as sched
 
 log = logging.getLogger("disk-monitor")
@@ -30,8 +31,12 @@ def task_name(t: dict) -> str:
     if t.get("name"):
         return t["name"]
     if t["type"] == "smart":
-        return "Prueba SMART " + ("larga" if t.get("test") == "long" else "corta")
-    return TASK_TYPES.get(t["type"], t["type"])
+        return _("Prueba SMART larga") if t.get("test") == "long" else _("Prueba SMART corta")
+    return _(TASK_TYPES[t["type"]]) if t["type"] in TASK_TYPES else t["type"]
+
+
+def fmt_dt(ts: float | None = None) -> str:
+    return time.strftime(_("%d-%m-%Y %H:%M"), time.localtime(ts if ts is not None else time.time()))
 
 
 # ---------------------------------------------------------------- textos de tiempo
@@ -41,15 +46,15 @@ DOW_S = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]   # orden de tm_wday
 
 def ago(ts: float | None) -> str:
     if not ts:
-        return "nunca"
+        return _("nunca")
     d = time.time() - ts
     if d < 90:
-        return "recién"
+        return _("recién")
     if d < 3600:
-        return f"hace {d / 60:.0f} min"
+        return _("hace {n} min", n=f"{d / 60:.0f}")
     if d < 86400 * 1.5:
-        return f"hace {d / 3600:.0f} h"
-    return f"hace {d / 86400:.0f} días"
+        return _("hace {n} h", n=f"{d / 3600:.0f}")
+    return _("hace {n} días", n=f"{d / 86400:.0f}")
 
 
 def when_h(ts: float | None) -> str:
@@ -61,10 +66,10 @@ def when_h(ts: float | None) -> str:
     days = (time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
             - time.mktime((now.tm_year, now.tm_mon, now.tm_mday, 0, 0, 0, 0, 0, -1))) / 86400
     if round(days) == 0:
-        return f"hoy {hm}"
+        return _("hoy {hm}", hm=hm)
     if round(days) == 1:
-        return f"mañana {hm}"
-    return f"{DOW_S[t.tm_wday]} {time.strftime('%d-%m', t)} {hm}"
+        return _("mañana {hm}", hm=hm)
+    return f"{_(DOW_S[t.tm_wday])} {time.strftime(_('%d-%m'), t)} {hm}"
 
 
 def dur_h(sec: float | None) -> str:
@@ -75,7 +80,7 @@ def dur_h(sec: float | None) -> str:
 
 
 def _footer(trigger: str) -> str:
-    return f"{time.strftime('%d-%m-%Y %H:%M')} · revisión {trigger}"
+    return _("{when} · revisión {trigger}", when=fmt_dt(), trigger=_(trigger))
 
 
 # ---------------------------------------------------------------- revisión
@@ -99,6 +104,7 @@ async def run_check(trigger: str = "programada") -> dict:
 
 async def _check(trigger: str, t0: float) -> dict:
     s = db.get_settings()
+    set_lang(s.get("language"))
     disks = await collector.collect_disks(s["skip_standby"])
     pools = await asyncio.to_thread(collector.collect_zfs)
     fss = await asyncio.to_thread(collector.collect_fs, s.get("ignored_mounts") or [])
@@ -148,7 +154,7 @@ async def _check(trigger: str, t0: float) -> dict:
         for d in new_disks:
             events.append({"key": f"{d['key']}|new_disk", "subject": d["key"], "rule": "new_disk",
                            "severity": "info", "kind": "event",
-                           "title": f"Disco nuevo conectado: {rules.label(d)}",
+                           "title": _("Disco nuevo conectado: {lab}", lab=rules.label(d)),
                            "detail": " · ".join(x for x in (d.get("kind"), d.get("dev"),
                                                            d.get("transport") and d["transport"].upper()) if x),
                            "ident": rules.ident(d), "hint": ""})
@@ -240,12 +246,13 @@ def _item(a: dict, emoji: str | None = None, with_hint: bool = True) -> dict:
 
 
 def _plural(n: int, one: str, many: str) -> str:
-    return f"{n} {one if n == 1 else many}"
+    return f"{n} {_(one) if n == 1 else _(many)}"
 
 
 def reconcile(issues: list[dict], events: list[dict], s: dict, now: float, trigger: str = "programada",
               scope: str | None = None) -> dict | None:
     """scope: sólo conciliar alertas cuyo sujeto empiece así (p.ej. "zpool:"), sin tocar las demás."""
+    set_lang(s.get("language"))
     cfg = s["alerts"]
     min_sev = SEV[cfg.get("min_severity", "warning")]
     remind = float(cfg.get("reminder_hours") or 0) * 3600
@@ -299,17 +306,17 @@ def reconcile(issues: list[dict], events: list[dict], s: dict, now: float, trigg
         lst.sort(key=lambda x: -SEV[x["severity"]])
     sections = []
     if new:
-        sections.append({"heading": "Nuevo", "items": [_item(i) for i in new]})
+        sections.append({"heading": _("Nuevo"), "items": [_item(i) for i in new]})
     if worse:
-        sections.append({"heading": "Empeoró", "items": [_item(i) for i in worse]})
+        sections.append({"heading": _("Empeoró"), "items": [_item(i) for i in worse]})
     if evs:
-        sections.append({"heading": "Cambios", "items": [_item(e) for e in evs]})
+        sections.append({"heading": _("Cambios"), "items": [_item(e) for e in evs]})
     if reminders:
-        sections.append({"heading": "Siguen sin resolver",
-                         "items": [{**_item(i, with_hint=False), "detail": f"Activo desde {ago(i['since'])}."}
+        sections.append({"heading": _("Siguen sin resolver"),
+                         "items": [{**_item(i, with_hint=False), "detail": _("Activo desde {ago}.", ago=ago(i["since"]))}
                                    for i in reminders]})
     if resolved:
-        sections.append({"heading": "Resuelto", "items": [{"emoji": "✅", "text": a["title"]} for a in resolved]})
+        sections.append({"heading": _("Resuelto"), "items": [{"emoji": "✅", "text": a["title"]} for a in resolved]})
 
     bad = new + worse + [e for e in evs if SEV[e["severity"]] >= SEV["warning"]]
     allsev = [i["severity"] for i in new + worse + evs + reminders]
@@ -322,22 +329,22 @@ def reconcile(issues: list[dict], events: list[dict], s: dict, now: float, trigg
         if len(bad) == 1:
             title = f"{srv} · {bad[0]['title']}"
         else:
-            title = f"{srv} · {len(bad)} problemas en los discos"
+            title = _("{srv} · {n} problemas en los discos", srv=srv, n=len(bad))
             lead = f"{_plural(crit, 'es grave', 'son graves')}." if crit else None
     elif evs and all(e["rule"] == "new_disk" for e in evs):
-        title = f"{srv} · {'Disco nuevo conectado' if len(evs) == 1 else f'{len(evs)} discos nuevos conectados'}"
+        title = f"{srv} · " + (_("Disco nuevo conectado") if len(evs) == 1 else _("{n} discos nuevos conectados", n=len(evs)))
     elif evs and all(e["rule"] == "selftest_done" for e in evs):
-        title = f"{srv} · {'Prueba SMART terminada' if len(evs) == 1 else 'Pruebas SMART terminadas'}"
+        title = f"{srv} · " + (_("Prueba SMART terminada") if len(evs) == 1 else _("Pruebas SMART terminadas"))
     elif evs:
-        title = f"{srv} · Cambios en los discos"
+        title = f"{srv} · " + _("Cambios en los discos")
     elif reminders:
-        title = f"{srv} · Recordatorio: {_plural(len(reminders), 'problema sin resolver', 'problemas sin resolver')}"
-        lead = "Puedes silenciarlo en la pestaña Alertas del panel."
+        title = f"{srv} · " + _("Recordatorio: {what}", what=_plural(len(reminders), "problema sin resolver", "problemas sin resolver"))
+        lead = _("Puedes silenciarlo en la pestaña Alertas del panel.")
     else:
-        title = f"{srv} · {'Problema resuelto' if len(resolved) == 1 else 'Problemas resueltos'}"
+        title = f"{srv} · " + (_("Problema resuelto") if len(resolved) == 1 else _("Problemas resueltos"))
         top = "ok"
-        lead = ("Todo vuelve a estar en orden." if still <= 0
-                else "Aún queda 1 problema activo." if still == 1 else f"Aún quedan {still} problemas activos.")
+        lead = (_("Todo vuelve a estar en orden.") if still <= 0
+                else _("Aún queda 1 problema activo.") if still == 1 else _("Aún quedan {n} problemas activos.", n=still))
     return {"title": title, "severity": top, "lead": lead, "sections": sections, "footer": _footer(trigger),
             "link": s.get("base_url") or None}
 
@@ -362,19 +369,24 @@ POOL_ES = {"ONLINE": "en línea", "DEGRADED": "degradado", "FAULTED": "con falla
            "SUSPENDED": "suspendido", "OFFLINE": "fuera de línea"}
 
 
+def pool_es(st: str) -> str:
+    return _(POOL_ES[st]) if st in POOL_ES else st
+
+
 def scrub_line(sc: dict) -> str:
     if sc.get("in_progress") or sc.get("paused"):
         what = "Resilver" if sc.get("kind") == "resilver" else "Scrub"
-        txt = f"{what} {'en pausa' if sc.get('paused') else 'en curso'}"
+        txt = f"{what} {_('en pausa') if sc.get('paused') else _('en curso')}"
         if sc.get("progress") is not None:
             txt += f": {sc['progress']:.0f}%"
         if sc.get("eta"):
-            txt += f", faltan {dur_h(sc['eta'])}"
+            txt += _(", faltan {d}", d=dur_h(sc["eta"]))
         return txt
     if sc.get("kind") == "scrub" and sc.get("date"):
-        res = "sin errores" if not sc.get("errors") else f"{sc['errors']} errores"
-        return f"Último scrub {ago(sc['date'])}, {res}" + (f" (duró {dur_h(sc['duration'])})" if sc.get("duration") else "")
-    return "Sin scrub registrado"
+        res = _("sin errores") if not sc.get("errors") else _("{n} errores", n=sc["errors"])
+        return (_("Último scrub {ago}, {res}", ago=ago(sc["date"]), res=res)
+                + (_(" (duró {d})", d=dur_h(sc["duration"])) if sc.get("duration") else ""))
+    return _("Sin scrub registrado")
 
 
 def upcoming(s: dict, limit: int = 4) -> list[dict]:
@@ -387,6 +399,7 @@ def upcoming(s: dict, limit: int = 4) -> list[dict]:
 
 
 def report_message(s: dict) -> dict:
+    set_lang(s.get("language"))
     st = db.get_state("last_status", {}) or {}
     active = sorted(db.active_alerts().values(), key=lambda a: -SEV[a["severity"]])
     disks = st.get("disks", [])
@@ -396,43 +409,44 @@ def report_message(s: dict) -> dict:
         if d.get("temp") is not None:
             parts.append(f"{d['temp']} °C")
         if d.get("power_on_hours"):
-            parts.append(f"{d['power_on_hours'] / 24 / 365:.1f} años")
+            parts.append(_("{n} años", n=f"{d['power_on_hours'] / 24 / 365:.1f}"))
         if d.get("state") == "standby":
-            parts.append("en reposo")
+            parts.append(_("en reposo"))
         if d.get("zpool"):
             parts.append(d["zpool"])
         elif d.get("mounts"):
             parts.append(", ".join(d["mounts"]))
         di.append({"emoji": HEALTH_EMOJI.get(d.get("health", "ok"), "•"), "name": d["name"], "text": " · ".join(parts)})
-    sections = [{"heading": "💽 Discos", "items": di}]
+    sections = [{"heading": "💽 " + _("Discos"), "items": di}]
     pi = []
     for p in st.get("pools", []):
         if "health" not in p:
             continue
         lv = p.get("health_level", "ok")
         pi.append({"emoji": HEALTH_EMOJI.get(lv, "•"), "name": p["name"],
-                   "text": f"{POOL_ES.get(p['health'], p['health'])} · {p['cap']}% usado · quedan {rules.human(p.get('free'))}",
+                   "text": _("{state} · {pct}% usado · quedan {free}", state=pool_es(p["health"]), pct=p["cap"], free=rules.human(p.get("free"))),
                    "detail": scrub_line(p.get("scrub") or {})})
     if pi:
-        sections.append({"heading": "🗄 Pools ZFS", "items": pi})
+        sections.append({"heading": "🗄 " + _("Pools ZFS"), "items": pi})
     fi = [{"emoji": HEALTH_EMOJI.get(f.get("health_level", "ok"), "•"), "name": f["mount"],
-           "text": f"{f['pct']:.0f}% usado · quedan {rules.human(f['avail'])}"}
+           "text": _("{pct}% usado · quedan {free}", pct=f"{f['pct']:.0f}", free=rules.human(f["avail"]))}
           for f in st.get("fs", []) if f["fstype"] != "zfs"]
     if fi:
-        sections.append({"heading": "📁 Espacio", "items": fi})
+        sections.append({"heading": "📁 " + _("Espacio"), "items": fi})
     if active:
-        sections.append({"heading": "⚠️ Problemas activos", "items": [_item(a, with_hint=False) for a in active]})
+        sections.append({"heading": "⚠️ " + _("Problemas activos"), "items": [_item(a, with_hint=False) for a in active]})
     if (up := upcoming(s)):
-        sections.append({"heading": "📅 Próximas tareas", "items": up})
+        sections.append({"heading": "📅 " + _("Próximas tareas"), "items": up})
     top = max((a["severity"] for a in active), key=lambda x: SEV[x], default="ok")
     ok_disks = sum(1 for d in disks if d.get("health") == "ok")
     if not active:
-        lead = f"Todo en orden: {_plural(ok_disks, 'disco sano', 'discos sanos')}."
+        lead = _("Todo en orden: {what}.", what=_plural(ok_disks, "disco sano", "discos sanos"))
     else:
         crit = sum(1 for a in active if a["severity"] == "critical")
-        lead = f"Hay {_plural(len(active), 'problema activo', 'problemas activos')}" + (f" ({crit} grave{'s' if crit != 1 else ''})." if crit else ".")
-    return {"title": f"{server_name(s)} · Estado de los discos", "severity": top, "lead": lead,
-            "sections": sections, "footer": f"Revisado {time.strftime('%d-%m-%Y %H:%M', time.localtime(st.get('ts') or time.time()))}",
+        lead = (_("Hay {what}", what=_plural(len(active), "problema activo", "problemas activos"))
+                + ((" (" + _plural(crit, "grave", "graves") + ").") if crit else "."))
+    return {"title": f"{server_name(s)} · " + _("Estado de los discos"), "severity": top, "lead": lead,
+            "sections": sections, "footer": _("Revisado {when}", when=fmt_dt(st.get("ts"))),
             "link": s.get("base_url") or None}
 
 
@@ -477,23 +491,26 @@ def add_followup(ts: float) -> None:
 # ---------------------------------------------------------------- scrub ZFS
 
 def scrub_start_msg(s: dict, started: list[dict], by: str | None) -> dict:
+    set_lang(s.get("language"))
     items = []
     for p in started:
         sc = p.get("scrub") or {}
         prev = (db.get_state("scrub_last_duration", {}) or {}).get(p["name"]) or sc.get("duration")
         if prev:
-            det = f"El anterior duró {dur_h(prev)}: debería terminar {when_h(time.time() + prev)}."
+            det = _("El anterior duró {d}: debería terminar {when}.", d=dur_h(prev), when=when_h(time.time() + prev))
         elif sc.get("eta"):
-            det = f"ZFS estima que termina {when_h(time.time() + sc['eta'])}."
+            det = _("ZFS estima que termina {when}.", when=when_h(time.time() + sc["eta"]))
         else:
             det = ""
-        items.append({"emoji": "🔍", "name": p["name"], "text": f"scrub iniciado ({p['cap']}% usado, {rules.human(p.get('alloc'))} a revisar)",
+        items.append({"emoji": "🔍", "name": p["name"], "text": _("scrub iniciado ({pct}% usado, {size} a revisar)", pct=p["cap"], size=rules.human(p.get("alloc"))),
                       "detail": det})
-    who = "programado en Disk Monitor" if by and by != "manual" else "iniciado a mano" if by == "manual" else "iniciado fuera de Disk Monitor"
-    title = (f"{server_name(s)} · Scrub de {started[0]['name']} iniciado" if len(started) == 1
-             else f"{server_name(s)} · Scrub iniciado en {len(started)} pools")
-    return {"title": title, "severity": "info", "lead": f"Scrub {who}. Te aviso cuando termine.",
-            "sections": [{"heading": "", "items": items}], "footer": time.strftime("%d-%m-%Y %H:%M"),
+    lead = (_("Scrub programado en Disk Monitor. Te aviso cuando termine.") if by and by != "manual"
+            else _("Scrub iniciado a mano. Te aviso cuando termine.") if by == "manual"
+            else _("Scrub iniciado fuera de Disk Monitor. Te aviso cuando termine."))
+    title = f"{server_name(s)} · " + (_("Scrub de {pool} iniciado", pool=started[0]["name"]) if len(started) == 1
+                                      else _("Scrub iniciado en {n} pools", n=len(started)))
+    return {"title": title, "severity": "info", "lead": lead,
+            "sections": [{"heading": "", "items": items}], "footer": fmt_dt(),
             "link": s.get("base_url") or None}
 
 
@@ -507,14 +524,14 @@ async def run_scrubs(targets: list[str], notify_ok: bool, by: str, notify_start:
         sc = p.get("scrub") or {}
         if sc.get("in_progress"):
             out.append({"pool": p["name"], "ok": False,
-                        "msg": f"ya hay un {'resilver' if sc.get('kind') == 'resilver' else 'scrub'} en curso"})
+                        "msg": _("ya hay un resilver en curso") if sc.get("kind") == "resilver" else _("ya hay un scrub en curso")})
             continue
         if p["health"] != "ONLINE":
             out.append({"pool": p["name"], "ok": False,
-                        "msg": f"el pool está {POOL_ES.get(p['health'], p['health'])}: no se inicia para no exigir más a los discos"})
+                        "msg": _("el pool está {state}: no se inicia para no exigir más a los discos", state=pool_es(p["health"]))})
             continue
         ok, msg = await asyncio.to_thread(collector.scrub, p["name"], "start")
-        out.append({"pool": p["name"], "ok": ok, "msg": "scrub iniciado" if ok else msg})
+        out.append({"pool": p["name"], "ok": ok, "msg": _("scrub iniciado") if ok else msg})
         if ok:
             started.append(p)
             track[p["name"]] = {"active": True, "kind": "scrub", "by": by, "notify_ok": bool(notify_ok),
@@ -531,6 +548,7 @@ async def run_scrubs(targets: list[str], notify_ok: bool, by: str, notify_start:
 
 def track_scrubs(pools: list[dict], s: dict) -> list[dict]:
     """Detecta scrubs/resilvers que empiezan o terminan (lanzados por Disk Monitor o por fuera)."""
+    set_lang(s.get("language"))
     track = db.get_state("scrub_track", {}) or {}
     items, top, now, ext_started = [], "ok", time.time(), []
     for p in pools:
@@ -558,28 +576,28 @@ def track_scrubs(pools: list[dict], s: dict) -> list[dict]:
                 ld[n] = sc["duration"]
                 db.set_state("scrub_last_duration", ld)
             if sc.get("canceled"):
-                it = {"emoji": "⏹", "name": n, "text": "scrub cancelado antes de terminar"}
+                it = {"emoji": "⏹", "name": n, "text": _("scrub cancelado antes de terminar")}
                 sev, notify_it = "info", bool(prev.get("notify_ok"))
             elif kind == "resilver":
                 okp = p["health"] == "ONLINE"
                 it = {"emoji": "✅" if okp else "🟡", "name": n,
-                      "text": "resilver terminado: " + ("el pool recuperó su redundancia" if okp
-                                                        else f"el pool sigue {POOL_ES.get(p['health'], p['health'])}"),
-                      "detail": f"Duró {dur_h(sc.get('duration'))}." if sc.get("duration") else ""}
+                      "text": (_("resilver terminado: el pool recuperó su redundancia") if okp
+                               else _("resilver terminado: el pool sigue {state}", state=pool_es(p["health"]))),
+                      "detail": _("Duró {d}.", d=dur_h(sc.get("duration"))) if sc.get("duration") else ""}
                 sev, notify_it = ("ok" if okp else "warning"), True
             else:
                 errs = sc.get("errors") or 0
-                det = f"Duró {dur_h(sc.get('duration'))}. Reparado: {sc.get('repaired') or '0B'}."
+                det = _("Duró {d}. Reparado: {r}.", d=dur_h(sc.get("duration")), r=sc.get("repaired") or "0B")
                 nxt = next((status["next"].get(f"task:{t['id']}") for t in s.get("tasks") or []
                             if t["type"] == "scrub" and t.get("enabled") and (not t.get("targets") or n in t["targets"])), None)
                 if nxt:
-                    det += f" Próximo: {when_h(nxt)}."
+                    det += " " + _("Próximo: {when}.", when=when_h(nxt))
                 if errs:
-                    it = {"emoji": "🟡", "name": n, "text": f"scrub terminado con {errs} errores", "detail": det,
-                          "hint": "Revisa el pool en el panel; zpool status -v muestra los archivos afectados."}
+                    it = {"emoji": "🟡", "name": n, "text": _("scrub terminado con {n} errores", n=errs), "detail": det,
+                          "hint": _("Revisa el pool en el panel; zpool status -v muestra los archivos afectados.")}
                     sev, notify_it = "warning", True
                 else:
-                    it = {"emoji": "✅", "name": n, "text": "scrub terminado sin errores", "detail": det}
+                    it = {"emoji": "✅", "name": n, "text": _("scrub terminado sin errores"), "detail": det}
                     sev, notify_it = "ok", bool(prev.get("notify_ok"))
             db.open_alert({"key": f"zpool:{n}|scrub_done", "subject": f"zpool:{n}", "rule": "scrub_done",
                            "severity": "info" if sev == "ok" else sev, "kind": "event",
@@ -592,10 +610,10 @@ def track_scrubs(pools: list[dict], s: dict) -> list[dict]:
     msgs = [scrub_start_msg(s, ext_started, None)] if ext_started else []
     if not items:
         return msgs
-    title = (f"{server_name(s)} · Scrub de {items[0]['name']} terminado" if len(items) == 1 and "scrub" in items[0]["text"]
-             else f"{server_name(s)} · Mantenimiento de ZFS terminado")
+    title = f"{server_name(s)} · " + (_("Scrub de {pool} terminado", pool=items[0]["name"])
+                                      if len(items) == 1 and "scrub" in items[0]["text"] else _("Mantenimiento de ZFS terminado"))
     return msgs + [{"title": title, "severity": top, "sections": [{"heading": "", "items": items}],
-                    "footer": time.strftime("%d-%m-%Y %H:%M"), "link": s.get("base_url") or None}]
+                    "footer": fmt_dt(), "link": s.get("base_url") or None}]
 
 
 async def zfs_watch() -> None:
@@ -605,6 +623,7 @@ async def zfs_watch() -> None:
     if not pools:
         return
     s = db.get_settings()
+    set_lang(s.get("language"))
     for m in track_scrubs(pools, s):
         await send(s, m)
     if _lock.locked():
@@ -635,18 +654,18 @@ def validate_tasks(tasks: list[dict]) -> None:
     ids = set()
     for t in tasks:
         if t.get("type") not in TASK_TYPES:
-            raise ValueError(f"tipo de tarea desconocido: {t.get('type')}")
+            raise ValueError(_("tipo de tarea desconocido: {t}", t=t.get("type")))
         if not t.get("id") or t["id"] in ids:
-            raise ValueError("cada tarea necesita un id único")
+            raise ValueError(_("cada tarea necesita un id único"))
         ids.add(t["id"])
         if t["type"] == "smart" and t.get("test") not in ("short", "long"):
-            raise ValueError("la prueba SMART debe ser corta o larga")
+            raise ValueError(_("la prueba SMART debe ser corta o larga"))
         try:
             sched.to_cron(t.get("when") or {})
         except ValueError as e:
             raise ValueError(f"{task_name(t)}: {e}") from None
         if t["type"] in ("smart", "scrub") and sched.interval_seconds(t["when"]) and sched.interval_seconds(t["when"]) < 3600:
-            raise ValueError(f"{task_name(t)}: no tiene sentido repetirla más de una vez por hora")
+            raise ValueError(_("{task}: no tiene sentido repetirla más de una vez por hora", task=task_name(t)))
 
 
 def has_zfs() -> bool:
@@ -665,7 +684,7 @@ def task_info(s: dict) -> list[dict]:
             nxt = []
         out.append({**t, "label": task_name(t), "describe": sched.describe(t["when"]), "next": nxt,
                     "next_h": [when_h(x) for x in nxt],
-                    "unavailable": "Este servidor no tiene pools ZFS" if na else None,
+                    "unavailable": _("Este servidor no tiene pools ZFS") if na else None,
                     "last": last.get(t["id"]), "running": status["running_task"] == t["id"]})
     return out
 
@@ -679,6 +698,7 @@ def _last_ts(t: dict, last: dict) -> float:
 
 async def run_task(t: dict, trigger: str = "programada") -> dict:
     async with _task_lock:
+        set_lang(db.get_settings().get("language"))
         status["running_task"] = t["id"]
         t0 = time.time()
         ok, msg = True, ""
@@ -686,22 +706,22 @@ async def run_task(t: dict, trigger: str = "programada") -> dict:
             if t["type"] == "check":
                 r = await run_check(trigger)
                 msg = (f"{_plural(r['disks'], 'disco', 'discos')}, "
-                       + ("sin problemas" if not r["issues"] else _plural(r["issues"], "problema", "problemas")))
+                       + (_("sin problemas") if not r["issues"] else _plural(r["issues"], "problema", "problemas")))
             elif t["type"] == "smart":
                 res = await run_selftests({"type": t["test"], "disks": t.get("targets") or []}, t.get("notify_ok", True))
                 started = [r["disk"] for r in res if r["ok"]]
                 skipped = [f"{r['disk']}: {r['msg']}" for r in res if not r["ok"]]
                 ok = bool(started) or not res
-                msg = ("Iniciada en " + ", ".join(started) if started else "No se inició en ningún disco") + \
+                msg = (_("Iniciada en {disks}", disks=", ".join(started)) if started else _("No se inició en ningún disco")) + \
                       (" · " + "; ".join(skipped) if skipped else "")
                 if not res:
-                    msg = "No hay discos disponibles para la prueba"
+                    msg = _("No hay discos disponibles para la prueba")
             elif t["type"] == "scrub":
                 res = await run_scrubs(t.get("targets") or [], t.get("notify_ok", True), task_name(t), t.get("notify_start", True))
                 ok = any(r["ok"] for r in res)
                 if not res:
-                    msg = ("Este servidor no tiene pools ZFS" if not has_zfs()
-                           else f"No existe el pool {', '.join(t.get('targets') or [])}")
+                    msg = (_("Este servidor no tiene pools ZFS") if not has_zfs()
+                           else _("No existe el pool {pool}", pool=", ".join(t.get("targets") or [])))
                 else:
                     msg = "; ".join(f"{r['pool']}: {r['msg']}" for r in res)
             elif t["type"] == "report":
@@ -709,8 +729,8 @@ async def run_task(t: dict, trigger: str = "programada") -> dict:
                 s = db.get_settings()
                 res = await send(s, report_message(s))
                 ok = bool(res) and all(r["ok"] for r in res)
-                msg = "Enviado" if ok else ("No hay canales de aviso activados" if not res
-                                            else "Falló el envío: " + "; ".join(r.get("error") or "" for r in res if not r["ok"]))
+                msg = _("Enviado") if ok else (_("No hay canales de aviso activados") if not res
+                                               else _("Falló el envío: {err}", err="; ".join(r.get("error") or "" for r in res if not r["ok"])))
         except Exception as e:  # noqa: BLE001
             log.exception("tarea %s falló", t["id"])
             ok, msg = False, f"{type(e).__name__}: {e}"

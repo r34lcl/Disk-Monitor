@@ -11,6 +11,7 @@ DB_PATH = os.environ.get("DB_PATH", "/data/disk-monitor.db")
 _lock = threading.Lock()
 
 DEFAULT_SETTINGS: dict[str, Any] = {
+    "language": "en" if os.environ.get("APP_LANG", "").lower().startswith("en") else "es",   # es | en
     "server_name": "",           # vacío = hostname del host
     "base_url": "",              # p.ej. https://discos.midominio.com, para el enlace en los avisos
     "skip_standby": True,          # no despertar discos en reposo (smartctl -n standby)

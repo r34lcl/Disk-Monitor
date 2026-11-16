@@ -12,8 +12,9 @@ mkdir -p data
 if [ ! -f .env ]; then
   PASS=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 18)
   umask 077
-  printf 'APP_USER=admin\nAPP_PASSWORD=%s\nHOST_PORT=%s\nTZ=%s\n' "$PASS" "${HOST_PORT:-8093}" \
-    "$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo UTC)" > .env
+  case "${APP_LANG:-${LANG:-es}}" in en*) L=en;; *) L=es;; esac
+  printf 'APP_USER=admin\nAPP_PASSWORD=%s\nHOST_PORT=%s\nTZ=%s\nAPP_LANG=%s\n' "$PASS" "${HOST_PORT:-8093}" \
+    "$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null || echo UTC)" "$L" > .env
   echo "Se creó .env con una contraseña nueva."
 fi
 $DC up -d --build

@@ -20,6 +20,8 @@ from email.message import EmailMessage
 
 import httpx
 
+from .i18n import _
+
 log = logging.getLogger("disk-monitor")
 RETRY_DELAYS = [5, 20, 60]
 SEV_EMOJI = {"critical": "🔴", "warning": "🟡", "info": "🔵", "ok": "✅"}
@@ -55,11 +57,11 @@ def telegram_html(msg: dict, limit: int = 4096) -> str:
     if msg.get("footer"):
         tail.append(f"<i>{_esc(msg['footer'])}</i>")
     if msg.get("link"):
-        tail.append(f'<a href="{_esc(msg["link"])}">Abrir Disk Monitor</a>')
+        tail.append(f'<a href="{_esc(msg["link"])}">{_("Abrir Disk Monitor")}</a>')
     if tail:
         out += [""] + tail
     txt = "\n".join(out)
-    return txt if len(txt) <= limit else txt[: limit - 20] + "\n…(recortado)"
+    return txt if len(txt) <= limit else txt[: limit - 20] + "\n…" + _("(recortado)")
 
 
 def plain_text(msg: dict) -> str:
@@ -127,7 +129,7 @@ def email_html(msg: dict) -> str:
                         f'{name}{_esc(it["text"])}{extra}</td></tr>')
     lead = f'<p style="margin:8px 0 0;color:#334155">{_esc(msg["lead"])}</p>' if msg.get("lead") else ""
     link = (f'<p style="margin-top:20px"><a href="{_esc(msg["link"])}" style="background:{color};color:#fff;'
-            f'padding:9px 16px;border-radius:6px;text-decoration:none">Abrir Disk Monitor</a></p>') if msg.get("link") else ""
+            f'padding:9px 16px;border-radius:6px;text-decoration:none">{_("Abrir Disk Monitor")}</a></p>') if msg.get("link") else ""
     foot = _esc(msg.get("footer") or time.strftime("%d-%m-%Y %H:%M"))
     return (f'<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:640px;margin:auto;color:#0f172a">'
             f'<div style="border-top:4px solid {color};padding:16px 0 4px"><h2 style="margin:0;font-size:19px">'

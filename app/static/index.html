@@ -15,6 +15,12 @@ header{position:sticky;top:0;z-index:5;background:var(--header);backdrop-filter:
 .top{display:flex;align-items:center;gap:14px;padding:12px 0;flex-wrap:wrap}
 .brand{display:flex;align-items:center;gap:9px;font-weight:650;font-size:16px}
 .brand small{font-weight:400;color:var(--muted)}
+.lang{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--border);border-radius:8px;background:var(--card)}
+.lang svg{width:15px;height:15px;margin:0 3px 0 5px;color:var(--muted);flex:none}
+.lang button{border:0;background:transparent;color:var(--text2);font:inherit;font-size:12px;font-weight:600;padding:3px 8px;border-radius:6px;cursor:pointer;min-height:24px}
+.lang button[aria-pressed=true]{background:var(--accent);color:#fff}
+.lang button:not([aria-pressed=true]):hover{background:var(--card2);color:var(--text)}
+.lang button:focus-visible{outline:2px solid var(--ring);outline-offset:1px}
 nav{display:flex;gap:2px;margin-left:auto;flex-wrap:wrap}
 nav button,.btn{background:transparent;border:1px solid transparent;color:var(--text2);padding:6px 11px;border-radius:7px;cursor:pointer;font:inherit}
 nav button.on{background:var(--card);border-color:var(--border);color:var(--text)}
@@ -142,10 +148,11 @@ legend{font-weight:650;padding:0 6px}
 </style></head><body>
 <header><div class="wrap top">
   <div class="brand"><img src="/favicon.svg" width="24" alt=""><span>Disk Monitor <small id="srv"></small></span></div>
+  <div class="lang" role="group" aria-label="Idioma / Language"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="M2 10h16M10 2c2.2 2.3 3.2 5 3.2 8s-1 5.7-3.2 8c-2.2-2.3-3.2-5-3.2-8s1-5.7 3.2-8z"/></svg><button type="button" data-lang="es" aria-pressed="true" title="Español" onclick="setLanguage('es')">ES</button><button type="button" data-lang="en" aria-pressed="false" title="English" onclick="setLanguage('en')">EN</button></div>
   <nav id="nav">
-    <button data-v="panel" class="on">Panel</button><button data-v="alerts">Alertas</button>
-    <button data-v="tasks">Tareas</button><button data-v="log">Actividad</button><button data-v="cfg">Configuración</button>
-    <button onclick="logout()" title="Cerrar sesión">Salir</button>
+    <button data-v="panel" class="on" data-t>Panel</button><button data-v="alerts" data-t>Alertas</button>
+    <button data-v="tasks" data-t>Tareas</button><button data-v="log" data-t>Actividad</button><button data-v="cfg" data-t>Configuración</button>
+    <button onclick="logout()" title="Cerrar sesión" data-tt data-t>Salir</button>
   </nav>
 </div></header>
 <main class="wrap">
@@ -156,8 +163,9 @@ legend{font-weight:650;padding:0 6px}
   <section id="v-cfg" hidden></section>
 </main>
 <footer class="site">Disk Monitor <span id="ver"></span> · <a href="https://kqk.cl" target="_blank" rel="noopener">KqK.cl</a></footer>
-<dialog id="dlg"><div class="dlg-h"><div id="dlg-t" style="flex:1;font-weight:650"></div><button class="btn sm" onclick="dlg.close()" aria-label="Cerrar detalle">Cerrar</button></div><div class="dlg-b" id="dlg-b"></div></dialog>
+<dialog id="dlg"><div class="dlg-h"><div id="dlg-t" style="flex:1;font-weight:650"></div><button class="btn sm" onclick="dlg.close()" aria-label="Cerrar detalle" data-t>Cerrar</button></div><div class="dlg-b" id="dlg-b"></div></dialog>
 <div id="toast"></div>
+<script src="/i18n.js"></script>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -171,14 +179,15 @@ async function api(path,opt={}){
 }
 function toast(m,ms=3500){const t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",ms)}
 const fmtB=n=>{if(n==null)return"—";const u=["B","KB","MB","GB","TB","PB"];let i=0;while(n>=1000&&i<u.length-1){n/=1000;i++}return(i?n.toFixed(n<10?2:1):n)+" "+u[i]};
-const fmtN=n=>n==null?"—":Number(n).toLocaleString("es-CL");
-const fmtT=t=>t?new Date(t*1000).toLocaleString("es-CL",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
-function ago(t){if(!t)return"nunca";const s=Date.now()/1000-t,a=Math.abs(s),f=s>=0?"hace ":"en ";
-  if(a<60)return f+Math.round(a)+" s";if(a<3600)return f+Math.round(a/60)+" min";if(a<86400)return f+(a/3600).toFixed(1).replace(".0","")+" h";{const n=Math.round(a/86400);return f+n+(n===1?" día":" días")}}
-const years=h=>h==null?"—":(h>=8760?(h/8760).toFixed(1)+" años":Math.round(h/24)+" días");
+const fmtN=n=>n==null?"—":Number(n).toLocaleString(LOC);
+const fmtT=t=>t?new Date(t*1000).toLocaleString(LOC,{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+function ago(t){if(!t)return _t("nunca");const s=Date.now()/1000-t,a=Math.abs(s);let v;
+  if(a<60)v=Math.round(a)+" s";else if(a<3600)v=Math.round(a/60)+" min";else if(a<86400)v=(a/3600).toFixed(1).replace(".0","")+" h";else{const n=Math.round(a/86400);v=n+(n===1?_t(" día"):_t(" días"))}
+  return _t(s>=0?"hace {v}":"en {v}",{v})}
+const years=h=>h==null?"—":(h>=8760?(h/8760).toFixed(1)+_t(" años"):Math.round(h/24)+_t(" días"));
 const SEVL={nosmart:"Sin SMART",ok:"Sano",warning:"Aviso",critical:"Crítico",info:"Info",ignored:"Ignorado",unknown:"Sin datos",standby:"En reposo"};
 const SEVI={ok:"✓",warning:"!",critical:"✕",info:"i",ignored:"–",unknown:"?"};
-const pill=(lvl,txt)=>`<span class="pill p-${lvl}"><span class="dot"></span>${esc(txt||SEVL[lvl]||lvl)}</span>`;
+const pill=(lvl,txt)=>`<span class="pill p-${lvl}"><span class="dot"></span>${esc(txt||_t(SEVL[lvl]||lvl))}</span>`;
 const ICON={
  critical:`<svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="var(--crit)"/><path d="M6.8 6.8l6.4 6.4M13.2 6.8l-6.4 6.4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>`,
  warning:`<svg class="ico" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.8l8.6 15.4H1.4z" fill="var(--warn)" stroke="var(--warn)" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 7.2v4.6" stroke="#1f1500" stroke-width="2" stroke-linecap="round"/><circle cx="10" cy="14.5" r="1.15" fill="#1f1500"/></svg>`,
@@ -200,10 +209,10 @@ function sparkSVG(pts){
   const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys)-1,y1=Math.max(...ys)+1;
   const W=200,H=38,X=x=>(x-x0)/(x1-x0||1)*W,Y=y=>H-3-(y-y0)/(y1-y0||1)*(H-6);
   const d=pts.map((p,i)=>(i?"L":"M")+X(p[0]).toFixed(1)+" "+Y(p[1]).toFixed(1)).join("");
-  return`<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Temperatura últimas 24 h"><path d="${d}" fill="none" stroke="var(--series)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+  return`<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="${_t("Temperatura últimas 24 h")}"><path d="${d}" fill="none" stroke="var(--series)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
 }
 function lineChart(el,pts,{unit="",refs=[],label=""}={}){
-  if(!pts||pts.length<2){el.innerHTML=`<div class="empty">Aún no hay suficiente historial</div>`;return}
+  if(!pts||pts.length<2){el.innerHTML=`<div class="empty">${_t("Aún no hay suficiente historial")}</div>`;return}
   const W=el.clientWidth||800,H=220,L=40,R=12,T=12,B=26;
   const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
   const x0=Math.min(...xs),x1=Math.max(...xs);
@@ -214,7 +223,7 @@ function lineChart(el,pts,{unit="",refs=[],label=""}={}){
   const X=x=>L+(x-x0)/(x1-x0||1)*(W-L-R),Y=y=>T+(1-(y-y0)/(y1-y0||1))*(H-T-B);
   const ticks=[];const step=Math.max(1,Math.ceil((y1-y0)/5));for(let v=Math.ceil(y0/step)*step;v<=y1;v+=step)ticks.push(v);
   const span=x1-x0,xt=[];for(let i=0;i<=4;i++)xt.push(x0+span*i/4);
-  const xl=t=>{const d=new Date(t*1000);return span>172800?d.toLocaleDateString("es-CL",{day:"2-digit",month:"2-digit"}):d.toLocaleTimeString("es-CL",{hour:"2-digit",minute:"2-digit"})};
+  const xl=t=>{const d=new Date(t*1000);return span>172800?d.toLocaleDateString(LOC,{day:"2-digit",month:"2-digit"}):d.toLocaleTimeString(LOC,{hour:"2-digit",minute:"2-digit"})};
   const d=pts.map((p,i)=>(i?"L":"M")+X(p[0]).toFixed(1)+" "+Y(p[1]).toFixed(1)).join("");
   el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">
     ${ticks.map(v=>`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${L-6}" y="${Y(v)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${v}</text>`).join("")}
@@ -243,23 +252,23 @@ async function loadPanel(){
   const th=(CFG&&CFG.thresholds)||null;
   const al=ST.alerts||[],crit=al.filter(a=>a.severity==="critical"&&!a.acknowledged).length,warn=al.filter(a=>a.severity==="warning"&&!a.acknowledged).length;
   const overall=crit?"critical":warn?"warning":"ok";
-  const ovTxt=crit||warn?`${crit?crit+" crítico"+(crit>1?"s":""):""}${crit&&warn?" · ":""}${warn?warn+" aviso"+(warn>1?"s":""):""}`:"Todo en orden";
+  const ovTxt=crit||warn?`${crit?_t(crit>1?"{n} críticos":"{n} crítico",{n:crit}):""}${crit&&warn?" · ":""}${warn?_t(warn>1?"{n} avisos":"{n} aviso",{n:warn}):""}`:_t("Todo en orden");
   const nxt=ST.next&&ST.next.check;
   // desactualizado = la revisión programada ya debió correr hace >10 min y no lo hizo (sirve con intervalo o cron)
   const stale=ST.ts&&!ST.running&&nxt&&(Date.now()/1000-nxt)>600;
   let h=`<div class="bar" role="status" aria-live="polite">${pill(overall,ovTxt)}
-    <div class="grow t2">Última revisión <b title="${fmtT(ST.ts)}">${ago(ST.ts)}</b>${ST.duration?` (${ST.duration.toFixed(1)} s)`:""} · próxima <b title="${fmtT(nxt)}">${nxt?ago(nxt):"—"}</b>
-    ${ST.env&&ST.env.smartctl?`<div class="muted" style="font-size:12px">${esc(ST.env.smartctl)} · ZFS: ${esc(ST.env.zfs)} · kernel ${esc(ST.env.kernel)}</div>`:""}
+    <div class="grow t2">${_t("Última revisión")} <b title="${fmtT(ST.ts)}">${ago(ST.ts)}</b>${ST.duration?` (${ST.duration.toFixed(1)} s)`:""} · ${_t("próxima")} <b title="${fmtT(nxt)}">${nxt?ago(nxt):"—"}</b>
+    ${ST.env&&ST.env.smartctl?`<div class="muted" style="font-size:12px">${esc(ST.env.smartctl)} · ZFS: ${esc(_t(ST.env.zfs))} · kernel ${esc(ST.env.kernel)}</div>`:""}
     ${ST.last_error?`<div style="color:var(--crit-ink)">Error: ${esc(ST.last_error)}</div>`:""}</div>
-    <button class="btn" id="discbtn" ${ST.running?"disabled":""} onclick="discover()" title="Vuelve a buscar discos conectados y muestra el inventario">Detectar discos</button>
-    <button class="btn primary" id="runbtn" ${ST.running?"disabled":""} onclick="runNow()">${ST.running?"Revisando…":"Revisar ahora"}</button></div>
-    ${stale?`<div class="stale" role="status">${icon("warning")}<span><b>Datos desactualizados:</b> la revisión programada no se ejecutó (debía correr ${ago(nxt)}; la última fue ${ago(ST.ts)}). Revisa los logs del contenedor o pulsa "Revisar ahora".</span></div>`:""}`;
-  if(al.length){h+=`<h2>Problemas activos <span class="muted" style="font-weight:400">(${al.length})</span></h2>`+al.map(alertRow).join("")}
-  if(ST.missing&&ST.missing.length){h+=`<h2>Discos ausentes</h2>`+ST.missing.map(m=>`<div class="alert">${icon("critical")}<div class="txt"><div>${esc(m.model)} (${esc(m.serial||m.key)})</div><div class="muted">Último visto como ${esc(m.dev)} ${ago(m.last_seen)}</div></div><button class="btn sm" onclick="forget('${esc(m.key)}')">Olvidar disco</button></div>`).join("")}
-  h+=`<h2>Discos físicos <span class="muted" style="font-weight:400">(${ST.disks.length})</span></h2><div class="grid">${ST.disks.map(diskCard).join("")||'<div class="empty">No se detectaron discos</div>'}</div>`;
-  if(ST.pools&&ST.pools.length)h+=`<h2>Pools ZFS</h2><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">${ST.pools.map(poolCard).join("")}</div>`;
+    <button class="btn" id="discbtn" ${ST.running?"disabled":""} onclick="discover()" title="${_t("Vuelve a buscar discos conectados y muestra el inventario")}">${_t("Detectar discos")}</button>
+    <button class="btn primary" id="runbtn" ${ST.running?"disabled":""} onclick="runNow()">${ST.running?_t("Revisando…"):_t("Revisar ahora")}</button></div>
+    ${stale?`<div class="stale" role="status">${icon("warning")}<span><b>${_t("Datos desactualizados:")}</b> ${_t('la revisión programada no se ejecutó (debía correr {a}; la última fue {b}). Revisa los logs del contenedor o pulsa "Revisar ahora".',{a:ago(nxt),b:ago(ST.ts)})}</span></div>`:""}`;
+  if(al.length){h+=`<h2>${_t("Problemas activos")} <span class="muted" style="font-weight:400">(${al.length})</span></h2>`+al.map(alertRow).join("")}
+  if(ST.missing&&ST.missing.length){h+=`<h2>${_t("Discos ausentes")}</h2>`+ST.missing.map(m=>`<div class="alert">${icon("critical")}<div class="txt"><div>${esc(m.model)} (${esc(m.serial||m.key)})</div><div class="muted">${_t("Último visto como {dev} {ago}",{dev:esc(m.dev),ago:ago(m.last_seen)})}</div></div><button class="btn sm" onclick="forget('${esc(m.key)}')">${_t("Olvidar disco")}</button></div>`).join("")}
+  h+=`<h2>${_t("Discos físicos")} <span class="muted" style="font-weight:400">(${ST.disks.length})</span></h2><div class="grid">${ST.disks.map(diskCard).join("")||`<div class="empty">${_t("No se detectaron discos")}</div>`}</div>`;
+  if(ST.pools&&ST.pools.length)h+=`<h2>${_t("Pools ZFS")}</h2><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">${ST.pools.map(poolCard).join("")}</div>`;
   const fs=(ST.fs||[]);
-  if(fs.length)h+=`<h2>Sistemas de archivos</h2><div class="card tw"><table><thead><tr><th>Montaje</th><th>Origen</th><th>Tipo</th><th style="width:30%">Uso</th><th class="num">Usado</th><th class="num">Libre</th><th class="num">Total</th></tr></thead><tbody>${fs.map(f=>{
+  if(fs.length)h+=`<h2>${_t("Sistemas de archivos")}</h2><div class="card tw"><table><thead><tr><th>${_t("Montaje")}</th><th>${_t("Origen")}</th><th>${_t("Tipo")}</th><th style="width:30%">${_t("Uso")}</th><th class="num">${_t("Usado")}</th><th class="num">${_t("Libre")}</th><th class="num">${_t("Total")}</th></tr></thead><tbody>${fs.map(f=>{
     const lv=f.health_level||"ok";return`<tr><td><b>${esc(f.mount)}</b></td><td class="t2">${esc(f.source)}</td><td class="t2">${esc(f.fstype)}</td>
     <td><div style="display:flex;gap:8px;align-items:center"><div class="meter" style="flex:1"><i class="${lv}" style="width:${f.pct}%"></i></div><span style="font-variant-numeric:tabular-nums;min-width:44px;text-align:right">${f.pct.toFixed(1)}%</span>${lv!=="ok"?pill(lv):""}</div></td>
     <td class="num">${fmtB(f.used)}</td><td class="num">${fmtB(f.avail)}</td><td class="num">${fmtB(f.total)}</td></tr>`}).join("")}</tbody></table></div>`;
@@ -269,15 +278,15 @@ async function loadPanel(){
 function alertRow(a){
   return`<div class="alert ${a.acknowledged?"acked":""}">${icon(a.severity)}
   <div class="txt"><div>${esc(a.title)}</div>${a.detail?`<div class="t2">${esc(a.detail)}</div>`:""}
-  <div class="muted" style="font-size:12px">${pill(a.severity)} desde ${fmtT(a.first_seen)} · visto ${ago(a.last_seen)}${a.acknowledged?" · silenciado":""}</div></div>
-  <button class="btn sm" onclick="ack(${a.id},${a.acknowledged?0:1})" title="${a.acknowledged?"Volver a recibir recordatorios":"No enviar más recordatorios de este problema"}">${a.acknowledged?"Reactivar":"Silenciar"}</button></div>`;
+  <div class="muted" style="font-size:12px">${pill(a.severity)} ${_t("desde")} ${fmtT(a.first_seen)} · ${_t("visto")} ${ago(a.last_seen)}${a.acknowledged?" · "+_t("silenciado"):""}</div></div>
+  <button class="btn sm" onclick="ack(${a.id},${a.acknowledged?0:1})" title="${a.acknowledged?_t("Volver a recibir recordatorios"):_t("No enviar más recordatorios de este problema")}">${a.acknowledged?_t("Reactivar"):_t("Silenciar")}</button></div>`;
 }
 function diskCard(d){
   const c=d.counters||{},lvl=d.state==="standby"&&d.health==="ok"?"ok":d.health||"ok";
   const ssd=d.kind==="SSD"||d.kind==="NVMe";
   const tags=[d.kind,d.capacity?fmtB(d.capacity):null,d.rpm?d.rpm+" rpm":null,d.link,d.protocol==="ATA"?"SATA":d.protocol].filter(Boolean);
   if(d.zpool)tags.push("ZFS "+d.zpool);(d.mounts||[]).forEach(m=>tags.push(m));
-  const k=[];const add=(lab,v,bad)=>k.push(`<div class="${bad?"bad":""}"><b>${v}</b><span>${lab}</span></div>`);
+  const k=[];const add=(lab,v,bad)=>k.push(`<div class="${bad?"bad":""}"><b>${v}</b><span>${_t(lab)}</span></div>`);
   add("Encendido",years(d.power_on_hours));
   if(d.kind==="NVMe"){add("Desgaste",c.percentage_used!=null?c.percentage_used+"%":"—",c.percentage_used>=80);add("Reserva",c.available_spare!=null?c.available_spare+"%":"—");add("Errores medio",fmtN(c.media_errors),c.media_errors>0)}
   else if(d.protocol==="SCSI"){add("Defectos",fmtN(c.grown_defects),c.grown_defects>0);add("E/S sin corregir",fmtN((c.uncorrected_read||0)+(c.uncorrected_write||0)+(c.uncorrected_verify||0)))}
@@ -287,62 +296,62 @@ function diskCard(d){
     add("Errores CRC",fmtN(c.crc_errors),c.crc_errors>0)}
   add("Escrito",fmtB(c.bytes_written));
   const st=d.selftest||{},last=st.last;
-  const stTxt=st.running?`<span class="prog">Prueba en curso${st.remaining!=null?` · falta ${st.remaining}%`:""}</span>`
-    :last?`Última prueba: ${esc(last.type||"")} ${last.passed?"✓":"✕"} <span class="muted">(${last.hours!=null&&d.power_on_hours?ago(Date.now()/1000-(d.power_on_hours-last.hours)*3600):"?"})</span>`:`<span class="muted">Sin pruebas SMART registradas</span>`;
+  const stTxt=st.running?`<span class="prog">${_t("Prueba en curso")}${st.remaining!=null?_t(" · falta {n}%",{n:st.remaining}):""}</span>`
+    :last?`${_t("Última prueba:")} ${esc(last.type||"")} ${last.passed?"✓":"✕"} <span class="muted">(${last.hours!=null&&d.power_on_hours?ago(Date.now()/1000-(d.power_on_hours-last.hours)*3600):"?"})</span>`:`<span class="muted">${_t("Sin pruebas SMART registradas")}</span>`;
   const tempCls=d.temp==null?"":"";
-  return`<div class="card disk h-${lvl}" role="button" tabindex="0" aria-label="Ver detalle de ${esc(d.name)}, ${esc(d.model)}: ${esc(SEVL[lvl]||lvl)}" onclick="openDisk('${esc(d.key)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDisk('${esc(d.key)}')}">
+  return`<div class="card disk h-${lvl}" role="button" tabindex="0" aria-label="${_t("Ver detalle de")} ${esc(d.name)}, ${esc(d.model)}: ${esc(_t(SEVL[lvl]||lvl))}" onclick="openDisk('${esc(d.key)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDisk('${esc(d.key)}')}">
   <div class="dhead"><div style="min-width:0"><div class="dname">${esc(d.name)} <span class="muted" style="font-weight:400;font-size:12px">${esc(d.dev)}</span></div>
   <div class="dmodel">${esc(d.model)}${d.serial&&!/^0+$/.test(d.serial)?" · "+esc(d.serial):""}</div></div>
   <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${pill(lvl)}${d.state==="standby"?pill("standby"):""}</div></div>
   <div class="tags">${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>
-  ${d.state==="error"?`<div style="margin-top:10px;color:var(--crit-ink)">${esc(d.error)}</div>`:d.state==="nosmart"?`<div style="margin-top:10px" class="t2">Este dispositivo no entrega datos SMART (disco virtual, adaptador USB o controladora que no los expone). Sólo se vigila que siga presente.</div><div class="muted" style="font-size:12px;margin-top:4px">${esc(d.error||"")}</div>`:`
+  ${d.state==="error"?`<div style="margin-top:10px;color:var(--crit-ink)">${esc(d.error)}</div>`:d.state==="nosmart"?`<div style="margin-top:10px" class="t2">${_t("Este dispositivo no entrega datos SMART (disco virtual, adaptador USB o controladora que no los expone). Sólo se vigila que siga presente.")}</div><div class="muted" style="font-size:12px;margin-top:4px">${esc(d.error||"")}</div>`:`
   <div class="trow"><div class="temp ${tempCls}">${d.temp??"—"}<small> °C</small></div>${sparkSVG(ST.spark[d.key])}</div>
   <div class="kv">${k.join("")}</div>`}
-  <div class="foot"><span>${stTxt}</span>${d.stale_since?`<span class="muted">datos de ${ago(d.stale_since)}</span>`:""}</div></div>`;
+  <div class="foot"><span>${stTxt}</span>${d.stale_since?`<span class="muted">${_t("datos de {ago}",{ago:ago(d.stale_since)})}</span>`:""}</div></div>`;
 }
 function poolCard(p){
   if(p.error)return`<div class="card"><b>ZFS</b><div style="color:var(--crit-ink)">${esc(p.error)}</div></div>`;
   const lv=p.health_level||"ok",sc=p.scrub||{};
   const active=sc.in_progress||sc.paused,what=sc.kind==="resilver"?"Resilver":"Scrub";
-  const scrubBox=active?`<div class="scrub"><div class="grow"><b>${what} ${sc.paused?"en pausa":"en curso"}</b>${sc.progress!=null?` · ${sc.progress.toFixed(1)}%`:""}${sc.eta?` · faltan ${durH(sc.eta)}`:""}${sc.started?` <span class="muted">· desde ${fmtT(sc.started)}</span>`:""}
-      <div class="meter" role="progressbar" aria-label="Avance del ${what.toLowerCase()}" aria-valuenow="${sc.progress||0}" aria-valuemin="0" aria-valuemax="100"><i style="width:${sc.progress||0}%"></i></div></div>
-      ${sc.kind==="scrub"?`<button class="btn sm" onclick="scrubAct('${esc(p.name)}','${sc.paused?"start":"pause"}')">${sc.paused?"Reanudar":"Pausar"}</button><button class="btn sm" onclick="scrubAct('${esc(p.name)}','stop')">Detener</button>`:""}</div>`
-    :`<div class="scrub"><div class="grow t2">${sc.kind==="scrub"&&sc.date?`Último scrub <b title="${fmtT(sc.date)}">${ago(sc.date)}</b> · ${sc.errors?`<b style="color:var(--warn-ink)">${sc.errors} errores</b>`:"sin errores"}${sc.duration?` · duró ${durH(sc.duration)}`:""}`:sc.canceled?"El último scrub se canceló":"Sin scrub registrado"}${nextScrub(p.name)?` · próximo <b>${nextScrub(p.name)}</b>`:""}</div>
-      <button class="btn sm" onclick="scrubAct('${esc(p.name)}','start')" ${p.health!=="ONLINE"?"disabled title='El pool no está sano'":""}>Iniciar scrub</button></div>`;
+  const scrubBox=active?`<div class="scrub"><div class="grow"><b>${what} ${sc.paused?_t("en pausa"):_t("en curso")}</b>${sc.progress!=null?` · ${sc.progress.toFixed(1)}%`:""}${sc.eta?_t(" · faltan {d}",{d:durH(sc.eta)}):""}${sc.started?` <span class="muted">· ${_t("desde")} ${fmtT(sc.started)}</span>`:""}
+      <div class="meter" role="progressbar" aria-label="${_t("Avance del {w}",{w:what.toLowerCase()})}" aria-valuenow="${sc.progress||0}" aria-valuemin="0" aria-valuemax="100"><i style="width:${sc.progress||0}%"></i></div></div>
+      ${sc.kind==="scrub"?`<button class="btn sm" onclick="scrubAct('${esc(p.name)}','${sc.paused?"start":"pause"}')">${sc.paused?_t("Reanudar"):_t("Pausar")}</button><button class="btn sm" onclick="scrubAct('${esc(p.name)}','stop')">${_t("Detener")}</button>`:""}</div>`
+    :`<div class="scrub"><div class="grow t2">${sc.kind==="scrub"&&sc.date?`${_t("Último scrub")} <b title="${fmtT(sc.date)}">${ago(sc.date)}</b> · ${sc.errors?`<b style="color:var(--warn-ink)">${_t("{n} errores",{n:sc.errors})}</b>`:_t("sin errores")}${sc.duration?_t(" · duró {d}",{d:durH(sc.duration)}):""}`:sc.canceled?_t("El último scrub se canceló"):_t("Sin scrub registrado")}${nextScrub(p.name)?` · ${_t("próximo")} <b>${nextScrub(p.name)}</b>`:""}</div>
+      <button class="btn sm" onclick="scrubAct('${esc(p.name)}','start')" ${p.health!=="ONLINE"?`disabled title="${_t("El pool no está sano")}"`:""}>${_t("Iniciar scrub")}</button></div>`;
   const name=n=>n.startsWith("/dev/")?n.replace(/^\/dev\/disk\/by-[^/]+\//,"").replace(/^\/dev\//,""):n;
   const disk=v=>{const d=v.disk&&ST.disks.find(x=>x.dev===v.disk);return d?` <span class="muted">→ ${esc(d.name)}</span>`:""};
-  return`<div class="card"><div class="dhead"><div><div class="dname">${esc(p.name)}</div><div class="dmodel">${fmtB(p.alloc)} de ${fmtB(p.size)} · frag ${p.frag??"—"}%</div></div><div style="display:flex;gap:5px">${pill(p.health==="ONLINE"?"ok":"critical",p.health)}${lv!=="ok"?pill(lv):""}</div></div>
+  return`<div class="card"><div class="dhead"><div><div class="dname">${esc(p.name)}</div><div class="dmodel">${_t("{a} de {b}",{a:fmtB(p.alloc),b:fmtB(p.size)})} · frag ${p.frag??"—"}%</div></div><div style="display:flex;gap:5px">${pill(p.health==="ONLINE"?"ok":"critical",p.health)}${lv!=="ok"?pill(lv):""}</div></div>
   <div class="meter"><i class="${p.cap>=(CFG?.thresholds?.fs_crit||95)?"critical":p.cap>=(CFG?.thresholds?.fs_warn||85)?"warning":""}" style="width:${p.cap}%"></i></div>
-  <div class="t2" style="font-size:12.5px;margin-bottom:6px">${p.cap}% usado · quedan ${fmtB(p.free)}</div>${scrubBox}
+  <div class="t2" style="font-size:12.5px;margin-bottom:6px">${_t("{pct}% usado · quedan {free}",{pct:p.cap,free:fmtB(p.free)})}</div>${scrubBox}
   ${p.status?`<div class="t2" style="font-size:12.5px;margin-bottom:8px;display:flex;gap:6px">${icon("warning")}<span>${esc(p.status)}</span></div>`:""}
-  <div class="tw"><table class="vdev"><thead><tr><th>vdev</th><th>Estado</th><th class="num">Lect</th><th class="num">Escr</th><th class="num">Cksum</th></tr></thead><tbody>
+  <div class="tw"><table class="vdev"><thead><tr><th>${_t("vdev")}</th><th>${_t("Estado")}</th><th class="num">${_t("Lect")}</th><th class="num">${_t("Escr")}</th><th class="num">${_t("Cksum")}</th></tr></thead><tbody>
   ${p.vdevs.map(v=>{const errs=(v.read||0)+(v.write||0)+(v.cksum||0);return`<tr class="${v.state!=="ONLINE"&&v.state!=="AVAIL"?"hl":errs?"wl":""}"><td style="padding-left:${8+v.depth*14}px">${esc(name(v.name))}${disk(v)}</td><td>${esc(v.state)}</td><td class="num">${v.read??""}</td><td class="num">${v.write??""}</td><td class="num">${v.cksum??""}</td></tr>`}).join("")}
   </tbody></table></div>${p.errors?`<div class="t2" style="font-size:12.5px;margin-top:6px">errors: ${esc(p.errors)}</div>`:""}</div>`;
 }
 const durH=s=>{if(s==null)return"?";const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?`${h} h ${String(m).padStart(2,"0")} min`:`${m} min`};
 function nextScrub(pool){const t=(TK&&TK.tasks||[]).filter(t=>t.type==="scrub"&&t.enabled&&t.next[0]&&(!t.targets.length||t.targets.includes(pool))).sort((a,b)=>a.next[0]-b.next[0])[0];return t?t.next_h[0]:""}
 async function scrubAct(pool,action){
-  if(action==="stop"&&!confirm(`¿Detener el scrub de ${pool}? Si lo inicias de nuevo, parte desde el principio.`))return;
-  if(action==="start"&&!confirm(`¿Iniciar un scrub de ${pool} ahora? Lee todos los datos del pool y puede tardar varias horas; el servidor seguirá funcionando, pero los discos estarán más ocupados.`))return;
-  try{const r=await api(`/api/zfs/${encodeURIComponent(pool)}/scrub`,{method:"POST",body:{action}});toast(r.msg||"Listo")}catch(e){toast(e.message,6000)}
+  if(action==="stop"&&!confirm(_t("¿Detener el scrub de {pool}? Si lo inicias de nuevo, parte desde el principio.",{pool})))return;
+  if(action==="start"&&!confirm(_t("¿Iniciar un scrub de {pool} ahora? Lee todos los datos del pool y puede tardar varias horas; el servidor seguirá funcionando, pero los discos estarán más ocupados.",{pool})))return;
+  try{const r=await api(`/api/zfs/${encodeURIComponent(pool)}/scrub`,{method:"POST",body:{action}});toast(r.msg||_t("Listo"))}catch(e){toast(e.message,6000)}
   loadPanel()}
-async function runNow(){const b=$("#runbtn");b.disabled=true;b.textContent="Revisando…";
-  try{const r=await api("/api/check",{method:"POST"});toast(`Revisión lista: ${r.disks} discos, ${r.issues} problemas${r.notified?" (aviso enviado)":""}`)}catch(e){toast(e.message)}
+async function runNow(){const b=$("#runbtn");b.disabled=true;b.textContent=_t("Revisando…");
+  try{const r=await api("/api/check",{method:"POST"});toast(_t("Revisión lista: {d} discos, {i} problemas",{d:r.disks,i:r.issues})+(r.notified?_t(" (aviso enviado)"):""))}catch(e){toast(e.message)}
   loadPanel()}
-async function discover(){const b=$("#discbtn");b.disabled=true;b.textContent="Detectando…";
-  let r;try{r=await api("/api/discover",{method:"POST"})}catch(e){toast(e.message);b.disabled=false;b.textContent="Detectar discos";return}
+async function discover(){const b=$("#discbtn");b.disabled=true;b.textContent=_t("Detectando…");
+  let r;try{r=await api("/api/discover",{method:"POST"})}catch(e){toast(e.message);b.disabled=false;b.textContent=_t("Detectar discos");return}
   await loadPanel();const inv=await api("/api/inventory");
-  $("#dlg-t").textContent="Inventario de discos";
-  const note=r.first_inventory?`<p class="t2">Primer inventario de este servidor: ${r.disks} discos registrados. Desde ahora se avisará si alguno desaparece o aparece uno nuevo.</p>`
-    :`<p class="t2">${r.disks} discos detectados${r.new_disks.length?` · <b>${r.new_disks.length} nuevo(s)</b>: ${r.new_disks.map(esc).join(", ")}`:" · sin discos nuevos"}${r.missing.length?` · <b style="color:var(--crit-ink)">${r.missing.length} ausente(s)</b>`:""}.</p>`;
-  $("#dlg-b").innerHTML=note+`<div class="card tw"><table><thead><tr><th>Disco</th><th>Modelo</th><th>Serie</th><th>Estado</th><th>Visto</th><th></th></tr></thead><tbody>
+  $("#dlg-t").textContent=_t("Inventario de discos");
+  const note=r.first_inventory?`<p class="t2">${_t("Primer inventario de este servidor: {n} discos registrados. Desde ahora se avisará si alguno desaparece o aparece uno nuevo.",{n:r.disks})}</p>`
+    :`<p class="t2">${_t("{n} discos detectados",{n:r.disks})}${r.new_disks.length?` · <b>${_t("{n} nuevo(s)",{n:r.new_disks.length})}</b>: ${r.new_disks.map(esc).join(", ")}`:" · "+_t("sin discos nuevos")}${r.missing.length?` · <b style="color:var(--crit-ink)">${_t("{n} ausente(s)",{n:r.missing.length})}</b>`:""}.</p>`;
+  $("#dlg-b").innerHTML=note+`<div class="card tw"><table><thead><tr><th>${_t("Disco")}</th><th>${_t("Modelo")}</th><th>${_t("Serie")}</th><th>${_t("Estado")}</th><th>${_t("Visto")}</th><th></th></tr></thead><tbody>
   ${inv.map(x=>`<tr><td><b>${esc(x.name||"—")}</b> <span class="muted">${esc(x.dev||"")}</span></td><td>${esc(x.model)}</td><td class="vdev">${esc(x.serial||"")}</td>
-   <td>${x.present?pill(x.state==="nosmart"?"nosmart":x.state==="standby"?"standby":"ok",x.state==="nosmart"?"Sin SMART":x.state==="standby"?"En reposo":"Presente"):pill("missing","Ausente")}</td>
-   <td>${x.present?"ahora":ago(x.last_seen)}</td><td>${x.present?"":`<button class="btn sm" onclick="forget('${esc(x.key)}').then(discover)">Olvidar</button>`}</td></tr>`).join("")}</tbody></table></div>
-  <p class="hint">La detección se hace al iniciar el contenedor, en cada revisión, con este botón y con un sondeo rápido cada ${CFG?.discovery_minutes||"N"} min que no despierta los discos (Configuración).</p>`;
+   <td>${x.present?pill(x.state==="nosmart"?"nosmart":x.state==="standby"?"standby":"ok",_t(x.state==="nosmart"?"Sin SMART":x.state==="standby"?"En reposo":"Presente")):pill("missing",_t("Ausente"))}</td>
+   <td>${x.present?_t("ahora"):ago(x.last_seen)}</td><td>${x.present?"":`<button class="btn sm" onclick="forget('${esc(x.key)}').then(discover)">${_t("Olvidar")}</button>`}</td></tr>`).join("")}</tbody></table></div>
+  <p class="hint">${_t("La detección se hace al iniciar el contenedor, en cada revisión, con este botón y con un sondeo rápido cada {n} min que no despierta los discos (pestaña Tareas).",{n:CFG?.discovery_minutes||"N"})}</p>`;
   if(!dlg.open)dlg.showModal();}
 async function ack(id,v){await api(`/api/alerts/${id}/ack`,{method:"POST",body:{value:!!v}});VIEW==="alerts"?loadAlerts():loadPanel()}
-async function forget(k){if(!confirm("¿Dejar de vigilar este disco ausente?"))throw new Error("cancelado");await api(`/api/disks/${encodeURIComponent(k)}/forget`,{method:"POST"});toast("Disco olvidado; la alerta se cierra en la próxima revisión");}
+async function forget(k){if(!confirm(_t("¿Dejar de vigilar este disco ausente?")))throw new Error("cancelado");await api(`/api/disks/${encodeURIComponent(k)}/forget`,{method:"POST"});toast(_t("Disco olvidado; la alerta se cierra en la próxima revisión"));}
 
 // ------------------------------------------------------------------ detalle de disco
 let DK=null,DD=7;
@@ -352,108 +361,109 @@ async function openDisk(key,days){DK=key;DD=days||DD;
   $("#dlg-t").innerHTML=`${esc(d.name)} · ${esc(d.model)} ${pill(d.health||"ok")}`;
   const info=[["Dispositivo",d.dev],["Modelo",d.model],["Familia",d.family],["Serie",d.serial],["WWN",d.wwn],["Firmware",d.firmware],["Capacidad",fmtB(d.capacity)],
     ["Tipo",`${d.kind||"?"} · ${d.protocol||""}${d.rpm?" · "+d.rpm+" rpm":""}`],["Enlace",d.link],["Formato",d.form_factor],["Horas encendido",d.power_on_hours!=null?fmtN(d.power_on_hours)+" h ("+years(d.power_on_hours)+")":"—"],
-    ["Ciclos de encendido",fmtN(d.power_cycles)],["Temp. actual / máx. histórica",`${d.temp??"—"} °C / ${d.temp_lifetime_max??"—"} °C`],["SMART",d.smart_passed===false?"FALLA":d.smart_passed?"Correcto (PASSED)":"—"],
+    ["Ciclos de encendido",fmtN(d.power_cycles)],["Temp. actual / máx. histórica",`${d.temp??"—"} °C / ${d.temp_lifetime_max??"—"} °C`],["SMART",d.smart_passed===false?_t("FALLA"):d.smart_passed?_t("Correcto (PASSED)"):"—"],
     ["Pool / montaje",[d.zpool&&"ZFS "+d.zpool,...(d.mounts||[])].filter(Boolean).join(", ")||"—"],["Leído / escrito",`${fmtB(c.bytes_read)} / ${fmtB(c.bytes_written)}`],["Clave interna",d.key]];
   const st=d.selftest||{};const pm=st.polling_minutes||{};
   const th=CFG?.thresholds||{};const ssd=d.kind==="SSD"||d.kind==="NVMe";
-  const refs=[{v:ssd?th.ssd_temp_warn:th.hdd_temp_warn,c:"warn",t:"aviso"},{v:ssd?th.ssd_temp_crit:th.hdd_temp_crit,c:"crit",t:"crítico"}].filter(r=>r.v);
+  const refs=[{v:ssd?th.ssd_temp_warn:th.hdd_temp_warn,c:"warn",t:_t("aviso")},{v:ssd?th.ssd_temp_crit:th.hdd_temp_crit,c:"crit",t:_t("crítico")}].filter(r=>r.v);
   const keyAttr=new Set([5,10,184,187,188,196,197,198,199,170,171,172,232]);
-  $("#dlg-b").innerHTML=`<div class="info">${info.map(([a,b])=>`<div><span>${a}</span>${esc(b??"—")}</div>`).join("")}</div>
+  $("#dlg-b").innerHTML=`<div class="info">${info.map(([a,b])=>`<div><span>${_t(a)}</span>${esc(b??"—")}</div>`).join("")}</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0">
-    <button class="btn" onclick="selftest('${esc(key)}','short')" ${st.running?"disabled":""}>Prueba corta${pm.short?` (~${pm.short} min)`:""}</button>
-    <button class="btn" onclick="selftest('${esc(key)}','long')" ${st.running?"disabled":""}>Prueba larga${pm.extended?` (~${pm.extended>=120?(pm.extended/60).toFixed(0)+" h":pm.extended+" min"})`:""}</button>
-    <button class="btn" onclick="toggleIgnore('${esc(key)}')">${ign?"Volver a vigilar":"Ignorar alertas de este disco"}</button>
-    ${st.running?`<span class="prog" style="align-self:center">Prueba en curso${st.remaining!=null?` · falta ${st.remaining}%`:""}</span>`:""}</div>
-  <h2>Temperatura <span class="seg" style="margin-left:auto">${[1,7,30,90].map(n=>`<button class="${n===DD?"on":""}" onclick="openDisk('${esc(key)}',${n})">${n===1?"24 h":n+" d"}</button>`).join("")}</span></h2>
+    <button class="btn" onclick="selftest('${esc(key)}','short')" ${st.running?"disabled":""}>${_t("Prueba corta")}${pm.short?` (~${pm.short} min)`:""}</button>
+    <button class="btn" onclick="selftest('${esc(key)}','long')" ${st.running?"disabled":""}>${_t("Prueba larga")}${pm.extended?` (~${pm.extended>=120?(pm.extended/60).toFixed(0)+" h":pm.extended+" min"})`:""}</button>
+    <button class="btn" onclick="toggleIgnore('${esc(key)}')">${ign?_t("Volver a vigilar"):_t("Ignorar alertas de este disco")}</button>
+    ${st.running?`<span class="prog" style="align-self:center">${_t("Prueba en curso")}${st.remaining!=null?_t(" · falta {n}%",{n:st.remaining}):""}</span>`:""}</div>
+  <h2>${_t("Temperatura")} <span class="seg" style="margin-left:auto">${[1,7,30,90].map(n=>`<button class="${n===DD?"on":""}" onclick="openDisk('${esc(key)}',${n})">${n===1?"24 h":n+" d"}</button>`).join("")}</span></h2>
   <div class="card chart" id="tchart"></div>
-  <h2>Atributos SMART</h2><div class="card tw"><table><thead><tr><th class="num">ID</th><th>Atributo</th><th class="num">Valor</th><th class="num">Peor</th><th class="num">Umbral</th><th>Tipo</th><th>Falló</th><th>Raw</th></tr></thead><tbody>
+  <h2>${_t("Atributos SMART")}</h2><div class="card tw"><table><thead><tr><th class="num">${_t("ID")}</th><th>${_t("Atributo")}</th><th class="num">${_t("Valor")}</th><th class="num">${_t("Peor")}</th><th class="num">${_t("Umbral")}</th><th>${_t("Tipo")}</th><th>${_t("Falló")}</th><th>${_t("Raw")}</th></tr></thead><tbody>
   ${(d.attributes||[]).map(a=>{const rawn=parseInt(a.raw);const hl=a.when_failed==="now"?"hl":(a.when_failed||(keyAttr.has(a.id)&&rawn>0&&a.id!==232))?"wl":"";
-    return`<tr class="${hl}"><td class="num">${a.id}</td><td>${esc(a.name)}</td><td class="num">${a.value??""}</td><td class="num">${a.worst??""}</td><td class="num">${a.thresh??""}</td><td class="t2">${a.prefail?"pre-falla":a.value!=null?"uso":""}</td><td>${esc(a.when_failed)}</td><td class="vdev">${esc(a.raw)}</td></tr>`}).join("")||'<tr><td colspan="8" class="muted">Sin atributos</td></tr>'}
+    return`<tr class="${hl}"><td class="num">${a.id}</td><td>${esc(a.name)}</td><td class="num">${a.value??""}</td><td class="num">${a.worst??""}</td><td class="num">${a.thresh??""}</td><td class="t2">${a.prefail?_t("pre-falla"):a.value!=null?_t("uso"):""}</td><td>${esc(a.when_failed)}</td><td class="vdev">${esc(a.raw)}</td></tr>`}).join("")||`<tr><td colspan="8" class="muted">${_t("Sin atributos")}</td></tr>`}
   </tbody></table></div>
-  <h2>Pruebas SMART</h2><div class="card tw"><table><thead><tr><th>Tipo</th><th>Resultado</th><th class="num">Hora de vida</th><th>LBA error</th></tr></thead><tbody>
-  ${(st.log||[]).map(t=>`<tr class="${t.passed===false?"hl":""}"><td>${esc(t.type)}</td><td>${t.passed===false?"✕ ":t.passed?"✓ ":""}${esc(t.status)}</td><td class="num">${fmtN(t.hours)}</td><td>${t.lba??""}</td></tr>`).join("")||'<tr><td colspan="4" class="muted">El disco no tiene pruebas registradas</td></tr>'}
+  <h2>${_t("Pruebas SMART")}</h2><div class="card tw"><table><thead><tr><th>${_t("Tipo")}</th><th>${_t("Resultado")}</th><th class="num">${_t("Hora de vida")}</th><th>${_t("LBA error")}</th></tr></thead><tbody>
+  ${(st.log||[]).map(t=>`<tr class="${t.passed===false?"hl":""}"><td>${esc(t.type)}</td><td>${t.passed===false?"✕ ":t.passed?"✓ ":""}${esc(t.status)}</td><td class="num">${fmtN(t.hours)}</td><td>${t.lba??""}</td></tr>`).join("")||`<tr><td colspan="4" class="muted">${_t("El disco no tiene pruebas registradas")}</td></tr>`}
   </tbody></table></div>
-  ${(d.error_log||[]).length?`<h2>Log de errores ATA</h2><div class="card tw"><table><thead><tr><th>#</th><th>Hora</th><th>Descripción</th></tr></thead><tbody>${d.error_log.map(e=>`<tr><td>${e.n}</td><td>${fmtN(e.hours)}</td><td>${esc(e.desc)}</td></tr>`).join("")}</tbody></table></div>`:""}
-  <h2>Alertas de este disco</h2>${j.alerts.length?`<div class="card tw"><table><thead><tr><th>Gravedad</th><th>Alerta</th><th>Inicio</th><th>Resuelta</th></tr></thead><tbody>${j.alerts.map(a=>`<tr><td>${pill(a.severity)}</td><td>${esc(a.title)}</td><td>${fmtT(a.first_seen)}</td><td>${a.kind==="event"?"evento":a.resolved_at?fmtT(a.resolved_at):"<b>activa</b>"}</td></tr>`).join("")}</tbody></table></div>`:'<div class="empty">Sin alertas registradas</div>'}`;
+  ${(d.error_log||[]).length?`<h2>${_t("Log de errores ATA")}</h2><div class="card tw"><table><thead><tr><th>${_t("#")}</th><th>${_t("Hora")}</th><th>${_t("Descripción")}</th></tr></thead><tbody>${d.error_log.map(e=>`<tr><td>${e.n}</td><td>${fmtN(e.hours)}</td><td>${esc(e.desc)}</td></tr>`).join("")}</tbody></table></div>`:""}
+  <h2>${_t("Alertas de este disco")}</h2>${j.alerts.length?`<div class="card tw"><table><thead><tr><th>${_t("Gravedad")}</th><th>${_t("Alerta")}</th><th>${_t("Inicio")}</th><th>${_t("Resuelta")}</th></tr></thead><tbody>${j.alerts.map(a=>`<tr><td>${pill(a.severity)}</td><td>${esc(a.title)}</td><td>${fmtT(a.first_seen)}</td><td>${a.kind==="event"?_t("evento"):a.resolved_at?fmtT(a.resolved_at):"<b>"+_t("activa")+"</b>"}</td></tr>`).join("")}</tbody></table></div>`:`<div class="empty">${_t("Sin alertas registradas")}</div>`}`;
   if(!dlg.open)dlg.showModal();
-  lineChart($("#tchart"),j.history.temp,{unit:" °C",refs,label:"Temperatura de "+d.name});
+  lineChart($("#tchart"),j.history.temp,{unit:" °C",refs,label:_t("Temperatura de {name}",{name:d.name})});
 }
 async function selftest(key,type){
-  if(type==="long"&&!confirm("La prueba larga puede durar muchas horas en discos grandes y reduce el rendimiento mientras corre. ¿Iniciar?"))return;
-  try{const r=await api("/api/selftest",{method:"POST",body:{type,disks:[key]}});const x=r.results[0];toast(x?(x.ok?"Prueba iniciada":"No se pudo iniciar: "+x.msg):"Disco no disponible")}catch(e){toast(e.message)}}
+  if(type==="long"&&!confirm(_t("La prueba larga puede durar muchas horas en discos grandes y reduce el rendimiento mientras corre. ¿Iniciar?")))return;
+  try{const r=await api("/api/selftest",{method:"POST",body:{type,disks:[key]}});const x=r.results[0];toast(x?(x.ok?_t("Prueba iniciada"):_t("No se pudo iniciar: ")+x.msg):_t("Disco no disponible"))}catch(e){toast(e.message)}}
 async function toggleIgnore(key){const s=(await api("/api/settings")).settings;const set=new Set(s.ignored_disks||[]);set.has(key)?set.delete(key):set.add(key);
-  CFG=(await api("/api/settings",{method:"PUT",body:{ignored_disks:[...set]}})).settings;toast(set.has(key)?"Disco ignorado (aplica en la próxima revisión)":"El disco vuelve a vigilarse");openDisk(key)}
+  CFG=(await api("/api/settings",{method:"PUT",body:{ignored_disks:[...set]}})).settings;toast(set.has(key)?_t("Disco ignorado (aplica en la próxima revisión)"):_t("El disco vuelve a vigilarse"));openDisk(key)}
 
 // ------------------------------------------------------------------ alertas
 async function loadAlerts(){const al=await api("/api/alerts");
   const active=al.filter(a=>a.kind==="issue"&&!a.resolved_at),past=al.filter(a=>!(a.kind==="issue"&&!a.resolved_at));
-  $("#v-alerts").innerHTML=`<h2>Activas (${active.length})</h2>${active.map(alertRow).join("")||'<div class="empty">No hay problemas activos</div>'}
-  <h2>Historial</h2><div class="card tw"><table><thead><tr><th>Gravedad</th><th>Alerta</th><th>Tipo</th><th>Inicio</th><th>Fin</th><th>Avisada</th></tr></thead><tbody>
-  ${past.map(a=>`<tr><td>${pill(a.severity)}</td><td>${esc(a.title)}${a.detail?`<div class="muted">${esc(a.detail)}</div>`:""}</td><td class="t2">${a.kind==="event"?"evento":"problema"}</td><td>${fmtT(a.first_seen)}</td><td>${a.kind==="event"?"—":fmtT(a.resolved_at)}</td><td>${a.last_notified?"sí":"no"}</td></tr>`).join("")||'<tr><td colspan="6" class="muted">Sin historial</td></tr>'}</tbody></table></div>`}
+  $("#v-alerts").innerHTML=`<h2>${_t("Activas")} (${active.length})</h2>${active.map(alertRow).join("")||`<div class="empty">${_t("No hay problemas activos")}</div>`}
+  <h2>${_t("Historial")}</h2><div class="card tw"><table><thead><tr><th>${_t("Gravedad")}</th><th>${_t("Alerta")}</th><th>${_t("Tipo")}</th><th>${_t("Inicio")}</th><th>${_t("Fin")}</th><th>${_t("Avisada")}</th></tr></thead><tbody>
+  ${past.map(a=>`<tr><td>${pill(a.severity)}</td><td>${esc(a.title)}${a.detail?`<div class="muted">${esc(a.detail)}</div>`:""}</td><td class="t2">${a.kind==="event"?_t("evento"):_t("problema")}</td><td>${fmtT(a.first_seen)}</td><td>${a.kind==="event"?"—":fmtT(a.resolved_at)}</td><td>${a.last_notified?_t("sí"):_t("no")}</td></tr>`).join("")||`<tr><td colspan="6" class="muted">${_t("Sin historial")}</td></tr>`}</tbody></table></div>`}
 
 // ------------------------------------------------------------------ actividad
 async function loadLog(){const [runs,nots]=await Promise.all([api("/api/runs"),api("/api/notifications")]);
-  $("#v-log").innerHTML=`<h2>Avisos enviados</h2><div class="card tw"><table><thead><tr><th>Fecha</th><th>Aviso</th><th>Resultado</th></tr></thead><tbody>
-  ${nots.map(n=>`<tr><td style="white-space:nowrap">${fmtT(n.ts)}</td><td><details><summary>${esc(n.title)}</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(n.text)}</pre></details></td><td>${n.results.map(r=>`<div>${r.ok?"✓":"✕"} ${esc(r.channel)}${r.target?" · "+esc(r.target):""}${r.error?` <span class="muted">${esc(r.error)}</span>`:""}</div>`).join("")}</td></tr>`).join("")||'<tr><td colspan="3" class="muted">Aún no se ha enviado ningún aviso</td></tr>'}</tbody></table></div>
-  <h2>Revisiones</h2><div class="card tw"><table><thead><tr><th>Fecha</th><th>Origen</th><th class="num">Duración</th><th class="num">Discos</th><th class="num">Críticos</th><th class="num">Avisos</th><th class="num">Eventos</th><th>Notificó</th></tr></thead><tbody>
-  ${runs.map(r=>`<tr><td>${fmtT(r.ts)}</td><td>${esc(r.trigger)}</td><td class="num">${r.duration.toFixed(1)} s</td><td class="num">${r.summary.disks}</td><td class="num">${r.summary.critical||0}</td><td class="num">${r.summary.warning||0}</td><td class="num">${r.summary.events||0}</td><td>${r.summary.notified?"sí":"—"}</td></tr>`).join("")}</tbody></table></div>`}
+  $("#v-log").innerHTML=`<h2>${_t("Avisos enviados")}</h2><div class="card tw"><table><thead><tr><th>${_t("Fecha")}</th><th>${_t("Aviso")}</th><th>${_t("Resultado")}</th></tr></thead><tbody>
+  ${nots.map(n=>`<tr><td style="white-space:nowrap">${fmtT(n.ts)}</td><td><details><summary>${esc(n.title)}</summary><pre style="white-space:pre-wrap;font-size:12px">${esc(n.text)}</pre></details></td><td>${n.results.map(r=>`<div>${r.ok?"✓":"✕"} ${esc(r.channel)}${r.target?" · "+esc(r.target):""}${r.error?` <span class="muted">${esc(r.error)}</span>`:""}</div>`).join("")}</td></tr>`).join("")||`<tr><td colspan="3" class="muted">${_t("Aún no se ha enviado ningún aviso")}</td></tr>`}</tbody></table></div>
+  <h2>${_t("Revisiones")}</h2><div class="card tw"><table><thead><tr><th>${_t("Fecha")}</th><th>${_t("Origen")}</th><th class="num">${_t("Duración")}</th><th class="num">${_t("Discos")}</th><th class="num">${_t("Críticos")}</th><th class="num">${_t("Avisos")}</th><th class="num">${_t("Eventos")}</th><th>${_t("Notificó")}</th></tr></thead><tbody>
+  ${runs.map(r=>`<tr><td>${fmtT(r.ts)}</td><td>${esc(_t(r.trigger))}</td><td class="num">${r.duration.toFixed(1)} s</td><td class="num">${r.summary.disks}</td><td class="num">${r.summary.critical||0}</td><td class="num">${r.summary.warning||0}</td><td class="num">${r.summary.events||0}</td><td>${r.summary.notified?_t("sí"):"—"}</td></tr>`).join("")}</tbody></table></div>`}
 
 // ------------------------------------------------------------------ configuración
-const F=(id,label,val,type="text",hint="",extra="")=>`<div class="f"><label for="${id}" title="${esc(label)}">${label}</label><input id="${id}" type="${type}" value="${esc(val??"")}" ${extra}>${hint?`<div class="hint">${hint}</div>`:""}</div>`;
-const C=(id,label,val)=>`<label class="chk"><input id="${id}" type="checkbox" ${val?"checked":""}> <span>${label}</span></label>`;
-const S=(id,label,val,opts)=>`<div class="f"><label for="${id}" title="${esc(label)}">${label}</label><select id="${id}">${opts.map(([v,t])=>`<option value="${v}" ${String(v)===String(val)?"selected":""}>${t}</option>`).join("")}</select></div>`;
+const F=(id,label,val,type="text",hint="",extra="")=>{label=_t(label);return`<div class="f"><label for="${id}" title="${esc(label)}">${label}</label><input id="${id}" type="${type}" value="${esc(val??"")}" ${extra}>${hint?`<div class="hint">${_t(hint)}</div>`:""}</div>`};
+const C=(id,label,val)=>`<label class="chk"><input id="${id}" type="checkbox" ${val?"checked":""}> <span>${_t(label)}</span></label>`;
+const S=(id,label,val,opts)=>{label=_t(label);return`<div class="f"><label for="${id}" title="${esc(label)}">${label}</label><select id="${id}">${opts.map(([v,t])=>`<option value="${v}" ${String(v)===String(val)?"selected":""}>${_t(t)}</option>`).join("")}</select></div>`};
 const THL=[["hdd_temp_warn","Temp. HDD aviso (°C)"],["hdd_temp_crit","Temp. HDD crítica (°C)"],["ssd_temp_warn","Temp. SSD/NVMe aviso (°C)"],["ssd_temp_crit","Temp. SSD/NVMe crítica (°C)"],
  ["reallocated_warn","Sectores reasignados: aviso desde"],["reallocated_crit","Sectores reasignados: crítico desde"],["pending_crit","Sectores pendientes: crítico desde"],["uncorrectable_crit","Incorregibles offline: crítico desde"],
  ["reported_uncorrect_warn","Errores reportados: aviso desde"],["ssd_wear_warn","Desgaste SSD aviso (%)"],["ssd_wear_crit","Desgaste SSD crítico (%)"],["nvme_spare_warn","Reserva NVMe aviso bajo (%)"],
  ["fs_warn","Uso de disco/pool aviso (%)"],["fs_crit","Uso de disco/pool crítico (%)"],["scrub_max_days","Máx. días sin scrub ZFS","0 = no vigilar"]];
 async function loadCfg(){const j=await api("/api/settings");const s=CFG=j.settings;
   $("#v-cfg").innerHTML=`<form class="cfg" id="cf" onsubmit="saveCfg(event)">
-  <div class="note" style="border-color:var(--border);background:var(--card)">${icon("info")}<span>Los horarios de revisión, pruebas SMART, scrub y resumen ahora están en la pestaña <a href="#tasks" onclick="show('tasks');return false">Tareas</a>.</span></div>
-  <fieldset><legend>Alertas</legend><div class="fr">
+  <div class="note" style="border-color:var(--border);background:var(--card)">${icon("info")}<span>${_t("Los horarios de revisión, pruebas SMART, scrub y resumen ahora están en la pestaña")} <a href="#tasks" onclick="show('tasks');return false">${_t("Tareas")}</a>.</span></div>
+  <fieldset><legend>${_t("Alertas")}</legend><div class="fr">
     ${S("min_sev","Avisar desde",s.alerts.min_severity,[["warning","Avisos y críticos"],["critical","Sólo críticos"]])}
     ${F("remind","Recordatorio cada (horas)",s.alerts.reminder_hours,"number","Repite el aviso de problemas sin resolver. 0 = nunca")}
   </div><div style="margin-top:10px;display:grid;gap:6px">${C("notify_resolved","Avisar cuando un problema se resuelve",s.alerts.notify_resolved)}${C("notify_st_ok","Pruebas SMART lanzadas fuera de las tareas: avisar también si terminan bien",s.alerts.notify_selftest_ok)}${C("notify_scrub","Scrubs lanzados fuera de Disk Monitor (p.ej. cron del sistema): avisar al iniciar y al terminar",s.alerts.notify_scrub_ok)}${C("notify_new","Avisar cuando se detecta un disco nuevo",s.alerts.notify_new_disks)}</div></fieldset>
-  <fieldset><legend>Umbrales</legend><div class="fr">${THL.map(([k,l,h])=>F("th_"+k,l,s.thresholds[k],"number",h||"")).join("")}</div></fieldset>
-  <fieldset><legend>Telegram</legend>${C("tg_en","Activado",s.telegram.enabled)}<div class="fr" style="margin-top:10px">
+  <fieldset><legend>${_t("Umbrales")}</legend><div class="fr">${THL.map(([k,l,h])=>F("th_"+k,l,s.thresholds[k],"number",h||"")).join("")}</div></fieldset>
+  <fieldset><legend>${_t("Telegram")}</legend>${C("tg_en","Activado",s.telegram.enabled)}<div class="fr" style="margin-top:10px">
     ${F("tg_token","Bot token",s.telegram.bot_token,"password","Crea el bot con @BotFather")}
     ${F("tg_chats","Chat IDs (separados por coma)",s.telegram.chat_ids,"text","Usuario, grupo o canal. Para grupos el ID empieza con -100")}
-  </div><div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">${C("tg_silent","Avisos sin sonido (los críticos siempre suenan)",s.telegram.silent_warnings)}<button type="button" class="btn sm" onclick="testCh('telegram')">Enviar prueba</button></div></fieldset>
-  <fieldset><legend>Correo (SMTP)</legend>${C("em_en","Activado",s.email.enabled)}<div class="fr" style="margin-top:10px">
+  </div><div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">${C("tg_silent","Avisos sin sonido (los críticos siempre suenan)",s.telegram.silent_warnings)}<button type="button" class="btn sm" onclick="testCh('telegram')">${_t("Enviar prueba")}</button></div></fieldset>
+  <fieldset><legend>${_t("Correo (SMTP)")}</legend>${C("em_en","Activado",s.email.enabled)}<div class="fr" style="margin-top:10px">
     ${F("em_host","Servidor",s.email.host)}${F("em_port","Puerto",s.email.port,"number")}
     ${S("em_sec","Seguridad",s.email.security,[["starttls","STARTTLS (587)"],["ssl","SSL/TLS (465)"],["none","Ninguna"]])}
     ${F("em_user","Usuario",s.email.username)}${F("em_pass","Contraseña",s.email.password,"password")}
     ${F("em_from","Remitente",s.email.from,"text","Vacío = el usuario")}${F("em_to","Destinatarios (separados por coma)",s.email.to)}
-  </div><div style="margin-top:10px"><button type="button" class="btn sm" onclick="testCh('email')">Enviar prueba</button></div></fieldset>
-  <fieldset><legend>Otros servicios (Apprise)</legend>${C("ap_en","Activado",s.apprise.enabled)}<div class="f" style="margin-top:10px"><label for="ap_urls">Una URL por línea</label><textarea id="ap_urls" placeholder="discord://webhook_id/webhook_token&#10;ntfy://ntfy.sh/mi-tema&#10;pover://user@token&#10;slack://TokenA/TokenB/TokenC">${esc(s.apprise.urls)}</textarea>
-  <div class="hint">Discord, Slack, ntfy, Pushover, Gotify, WhatsApp, Signal, Matrix, Teams y más de 100 servicios. Formatos en github.com/caronc/apprise/wiki</div></div>
-  <div style="margin-top:10px"><button type="button" class="btn sm" onclick="testCh('apprise')">Enviar prueba</button></div></fieldset>
-  <fieldset><legend>General</legend><div class="fr">
-    ${F("srv_name","Nombre del servidor en los avisos",s.server_name,"text","Vacío = "+esc(j.hostname))}
-    ${F("base_url","URL pública de este panel",s.base_url,"text","Para el enlace en los avisos, p.ej. https://discos.midominio.com")}
+  </div><div style="margin-top:10px"><button type="button" class="btn sm" onclick="testCh('email')">${_t("Enviar prueba")}</button></div></fieldset>
+  <fieldset><legend>${_t("Otros servicios (Apprise)")}</legend>${C("ap_en","Activado",s.apprise.enabled)}<div class="f" style="margin-top:10px"><label for="ap_urls">${_t("Una URL por línea")}</label><textarea id="ap_urls" placeholder="discord://webhook_id/webhook_token&#10;ntfy://ntfy.sh/mi-tema&#10;pover://user@token&#10;slack://TokenA/TokenB/TokenC">${esc(s.apprise.urls)}</textarea>
+  <div class="hint">${_t("Discord, Slack, ntfy, Pushover, Gotify, WhatsApp, Signal, Matrix, Teams y más de 100 servicios. Formatos en github.com/caronc/apprise/wiki")}</div></div>
+  <div style="margin-top:10px"><button type="button" class="btn sm" onclick="testCh('apprise')">${_t("Enviar prueba")}</button></div></fieldset>
+  <fieldset><legend>${_t("General")}</legend><div class="fr">
+    ${S("lang","Idioma / Language",s.language||"es",[["es","Español"],["en","English"]])}
+    ${F("srv_name","Nombre del servidor en los avisos",s.server_name,"text",_t("Vacío =")+" "+esc(j.hostname))}
+    ${F("base_url","URL pública de este panel",s.base_url,"text",_t("Para el enlace en los avisos, p.ej. {url}",{url:"https://discos.midominio.com"}))}
     ${F("retention","Guardar historial (días)",s.retention_days,"number")}
     ${F("ign_mounts","Montajes a ignorar (coma)",(s.ignored_mounts||[]).join(", "))}
   </div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <a class="btn sm" href="/api/settings/export" download style="text-decoration:none">Exportar configuración</a>
-    <a class="btn sm" href="/api/settings/export?include_secrets=0" download style="text-decoration:none">Exportar sin contraseñas</a>
-    <label class="btn sm">Importar…<input type="file" accept=".json,application/json" hidden onchange="importCfg(this)"></label>
-    <span class="hint" style="margin:0">Para replicar canales, umbrales y horarios en otro servidor (no copia nombre, URL ni discos ignorados).</span></div>${(s.ignored_disks||[]).length?`<div class="hint" style="margin-top:8px">Discos ignorados: ${s.ignored_disks.map(esc).join(", ")} (se cambia desde el detalle del disco)</div>`:""}</fieldset>
-  <div style="position:sticky;bottom:12px;display:flex;justify-content:flex-end"><button class="btn primary" style="padding:9px 22px;box-shadow:0 2px 10px #0004">Guardar</button></div></form>`;
+    <a class="btn sm" href="/api/settings/export" download style="text-decoration:none">${_t("Exportar configuración")}</a>
+    <a class="btn sm" href="/api/settings/export?include_secrets=0" download style="text-decoration:none">${_t("Exportar sin contraseñas")}</a>
+    <label class="btn sm">${_t("Importar…")}<input type="file" accept=".json,application/json" hidden onchange="importCfg(this)"></label>
+    <span class="hint" style="margin:0">${_t("Para replicar canales, umbrales y horarios en otro servidor (no copia nombre, URL ni discos ignorados).")}</span></div>${(s.ignored_disks||[]).length?`<div class="hint" style="margin-top:8px">${_t("Discos ignorados: {list} (se cambia desde el detalle del disco)",{list:s.ignored_disks.map(esc).join(", ")})}</div>`:""}</fieldset>
+  <div style="position:sticky;bottom:12px;display:flex;justify-content:flex-end"><button class="btn primary" style="padding:9px 22px;box-shadow:0 2px 10px #0004">${_t("Guardar")}</button></div></form>`;
 }
 function collect(){const v=id=>document.getElementById(id).value,n=id=>Number(v(id)),c=id=>document.getElementById(id).checked;
   const th={};THL.forEach(([k])=>th[k]=n("th_"+k));
-  return{server_name:v("srv_name").trim(),base_url:v("base_url").trim(),retention_days:n("retention"),
+  return{language:v("lang"),server_name:v("srv_name").trim(),base_url:v("base_url").trim(),retention_days:n("retention"),
     ignored_mounts:v("ign_mounts").split(",").map(x=>x.trim()).filter(Boolean),
     alerts:{min_severity:v("min_sev"),reminder_hours:n("remind"),notify_resolved:c("notify_resolved"),notify_selftest_ok:c("notify_st_ok"),notify_scrub_ok:c("notify_scrub"),notify_new_disks:c("notify_new")},
     thresholds:th,
     telegram:{enabled:c("tg_en"),bot_token:v("tg_token").trim(),chat_ids:v("tg_chats").trim(),silent_warnings:c("tg_silent")},
     email:{enabled:c("em_en"),host:v("em_host").trim(),port:n("em_port"),security:v("em_sec"),username:v("em_user").trim(),password:v("em_pass"),from:v("em_from").trim(),to:v("em_to").trim()},
     apprise:{enabled:c("ap_en"),urls:v("ap_urls")}}}
-async function saveCfg(e){e&&e.preventDefault();try{CFG=(await api("/api/settings",{method:"PUT",body:collect()})).settings;toast("Configuración guardada");return true}catch(err){toast(err.message,6000);return false}}
+async function saveCfg(e){e&&e.preventDefault();const old=CFG&&CFG.language;try{CFG=(await api("/api/settings",{method:"PUT",body:collect()})).settings;if(CFG.language!==old&&old){location.reload();return true}toast(_t("Configuración guardada"));return true}catch(err){toast(err.message,6000);return false}}
 async function importCfg(inp){const f=inp.files[0];if(!f)return;
-  try{const j=JSON.parse(await f.text());CFG=(await api("/api/settings/import",{method:"POST",body:j})).settings;toast("Configuración importada");loadCfg()}catch(e){toast("No se pudo importar: "+e.message,6000)}inp.value=""}
-async function testCh(ch){if(!await saveCfg())return;toast("Enviando…");
+  try{const j=JSON.parse(await f.text());CFG=(await api("/api/settings/import",{method:"POST",body:j})).settings;toast(_t("Configuración importada"));loadCfg()}catch(e){toast(_t("No se pudo importar: ")+e.message,6000)}inp.value=""}
+async function testCh(ch){if(!await saveCfg())return;toast(_t("Enviando…"));
   try{const r=await api("/api/test/"+ch,{method:"POST",body:{}});const res=r.results||[];
-    toast(res.length?res.map(x=>`${x.ok?"✓":"✕"} ${x.channel}${x.target?" "+x.target:""}${x.error?": "+x.error:""}`).join(" | "):"No hay canales activados",8000)}catch(err){toast(err.message,6000)}}
+    toast(res.length?res.map(x=>`${x.ok?"✓":"✕"} ${x.channel}${x.target?" "+x.target:""}${x.error?": "+x.error:""}`).join(" | "):_t("No hay canales activados"),8000)}catch(err){toast(err.message,6000)}}
 
 // ------------------------------------------------------------------ tareas programadas
 const DOWS=[[1,"Lun"],[2,"Mar"],[3,"Mié"],[4,"Jue"],[5,"Vie"],[6,"Sáb"],[0,"Dom"]];
@@ -464,25 +474,25 @@ const TDESC={
   smart_long:"El disco lee toda su superficie. Sigue usable mientras tanto, pero más lento: en discos grandes tarda horas (12 TB ≈ 18–23 h).",
   scrub:"ZFS lee y verifica todos los datos del pool y repara lo que encuentre dañado. Los discos quedan ocupados mientras dura.",
   report:"Envía por los canales de aviso un resumen con el estado de todos los discos, aunque no haya problemas."};
-const tdesc=t=>TDESC[t.type==="smart"?"smart_"+t.test:t.type];
+const tdesc=t=>_t(TDESC[t.type==="smart"?"smart_"+t.test:t.type]);
 async function loadTasks(quiet){
   try{TK=await api("/api/tasks")}catch(e){if(!quiet)$("#v-tasks").innerHTML=`<div class="empty">${esc(e.message)}</div>`;return}
   if(!quiet)EDIT=null;
   renderTasks()}
 function renderTasks(){const j=TK;const hasZfs=j.pools.length>0;
   const scrubOn=j.tasks.some(t=>t.type==="scrub"&&t.enabled);
-  let h=`<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px"><div style="flex:1;min-width:240px"><h2 style="margin:0">Tareas programadas</h2>
-    <div class="hint">Activa, desactiva o cambia el horario de cada una. Las horas son las del servidor (${esc(j.tz)}, ahora ${esc(j.now_h)}).</div></div>
-    <div class="addmenu"><button class="btn sm" onclick="addTask('smart')">+ Prueba SMART</button>${hasZfs?`<button class="btn sm" onclick="addTask('scrub')">+ Scrub ZFS</button>`:""}<button class="btn sm" onclick="addTask('report')">+ Resumen</button></div></div>`;
-  if(j.host_scrubs.length)h+=`<div class="note">${icon("warning")}<div><b>El servidor ya programa scrubs por su cuenta${scrubOn?" y también activaste uno aquí":""}.</b>
+  let h=`<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px"><div style="flex:1;min-width:240px"><h2 style="margin:0">${_t("Tareas programadas")}</h2>
+    <div class="hint">${_t("Activa, desactiva o cambia el horario de cada una. Las horas son las del servidor ({tz}, ahora {now}).",{tz:esc(j.tz),now:esc(j.now_h)})}</div></div>
+    <div class="addmenu"><button class="btn sm" onclick="addTask('smart')">+ ${_t("Prueba SMART")}</button>${hasZfs?`<button class="btn sm" onclick="addTask('scrub')">+ ${_t("Scrub ZFS")}</button>`:""}<button class="btn sm" onclick="addTask('report')">+ ${_t("Resumen")}</button></div></div>`;
+  if(j.host_scrubs.length)h+=`<div class="note">${icon("warning")}<div><b>${_t("El servidor ya programa scrubs por su cuenta")}${scrubOn?_t(" y también activaste uno aquí"):""}.</b>
     <ul style="margin:6px 0;padding-left:18px">${j.host_scrubs.map(x=>`<li><code>${esc(x.source)}</code>: ${x.human?`<b>${esc(x.human)}</b>`:`<code>${esc(x.line)}</code>`}${x.note?` <span class="muted">(${esc(x.note)})</span>`:""}</li>`).join("")}</ul>
-    ${scrubOn?"Para no correr scrubs duplicados (cada uno tarda horas), desactiva los del sistema ejecutando en el servidor:":"Disk Monitor igual detecta esos scrubs y avisa cuando terminan. Si prefieres manejarlos desde aquí, activa la tarea «Scrub ZFS» y desactiva los del sistema:"}
+    ${scrubOn?_t("Para no correr scrubs duplicados (cada uno tarda horas), desactiva los del sistema ejecutando en el servidor:"):_t("Disk Monitor igual detecta esos scrubs y avisa cuando terminan. Si prefieres manejarlos desde aquí, activa la tarea «Scrub ZFS» y desactiva los del sistema:")}
     <div style="margin-top:6px"><code>${esc(j.host_scrubs.filter(x=>x.source.startsWith("/etc/cron")).map(x=>x.source.includes("zfsutils")?`sudo sed -i '/zfs-linux\\/scrub/s/^/#/' ${x.source}`:`sudo rm ${x.source}`).filter((v,i,a)=>a.indexOf(v)===i).join(" && "))}</code></div></div></div>`;
   h+=j.tasks.map((t,i)=>taskCard(t,i)).join("");
-  h+=`<div class="task"><div class="task-h"><div class="grow"><div class="tname">Detección de discos</div><div class="tdesc">Revisa cada pocos minutos si se conectó o retiró un disco (no despierta discos en reposo). Si cambia algo, lanza una revisión completa.</div></div></div>
-    <div class="fr" style="margin-top:12px"><div class="f"><label for="disc_min">Cada (minutos)</label><input id="disc_min" type="number" min="0" max="1440" value="${j.discovery_minutes}"><div class="hint">0 = desactivada</div></div>
+  h+=`<div class="task"><div class="task-h"><div class="grow"><div class="tname">${_t("Detección de discos")}</div><div class="tdesc">${_t("Revisa cada pocos minutos si se conectó o retiró un disco (no despierta discos en reposo). Si cambia algo, lanza una revisión completa.")}</div></div></div>
+    <div class="fr" style="margin-top:12px"><div class="f"><label for="disc_min">${_t("Cada (minutos)")}</label><input id="disc_min" type="number" min="0" max="1440" value="${j.discovery_minutes}"><div class="hint">${_t("0 = desactivada")}</div></div>
 </div><div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:10px">${C("skip_standby","No despertar discos en reposo al revisar (usa la última lectura)",j.skip_standby)}
-    <button class="btn sm" onclick="saveSys()">Guardar</button></div></div>`;
+    <button class="btn sm" onclick="saveSys()">${_t("Guardar")}</button></div></div>`;
   $("#v-tasks").innerHTML=h;
   if(EDIT!==null)wPreview(EDIT)}
 function taskCard(t,i){
@@ -490,41 +500,41 @@ function taskCard(t,i){
   const conflict=(t.type==="scrub"||(t.type==="smart"&&t.test==="long"))&&t.enabled&&t.next[0]&&TK.tasks.some(o=>o!==t&&o.enabled&&o.next[0]&&(o.type==="scrub"||(o.type==="smart"&&o.test==="long"))&&o.type!==t.type&&Math.abs(o.next[0]-t.next[0])<86400);
   const running=TK.running_task===t.id,na=t.unavailable;
   return`<div class="task ${t.enabled&&!na?"":"off"}" id="task-${i}"><div class="task-h">
-    <label class="sw" title="${t.enabled?"Desactivar":"Activar"}"><input type="checkbox" ${t.enabled?"checked":""} ${na?"disabled":""} onchange="toggleTask(${i},this.checked)" aria-label="${esc(t.label||"Tarea")}: activa"><i></i></label>
+    <label class="sw" title="${t.enabled?_t("Desactivar"):_t("Activar")}"><input type="checkbox" ${t.enabled?"checked":""} ${na?"disabled":""} onchange="toggleTask(${i},this.checked)" aria-label="${esc(t.label||_t("Tarea"))}: ${_t("activa")}"><i></i></label>
     <div class="grow"><div class="tname">${esc(t.label||tlabel(t))}</div><div class="tdesc">${esc(tdesc(t))}</div>
-      <div class="tmeta"><div><span>Horario</span> <b>${esc(t.describe||"—")}</b></div>
-        <div><span>Próxima</span> <b>${na?"inactiva: "+esc(na):t.enabled?(t.next_h&&t.next_h[0]||"—"):"desactivada"}</b></div>
+      <div class="tmeta"><div><span>${_t("Horario")}</span> <b>${esc(t.describe||"—")}</b></div>
+        <div><span>${_t("Próxima")}</span> <b>${na?_t("inactiva: ")+esc(na):t.enabled?(t.next_h&&t.next_h[0]||"—"):_t("desactivada")}</b></div>
         ${targetsTxt(t)}</div>
-      <div class="tmeta">${running?`<div class="prog">En ejecución…</div>`:L?`<div class="tlast ${L.ok?"":"bad"}"><span>Última</span> <b title="${fmtT(L.ts)}">${ago(L.ts)}</b>${L.trigger==="manual"?" (manual)":""} · ${L.ok?"✓":"✕"} ${esc(L.msg)}</div>`:`<div><span>Última</span> nunca</div>`}</div>
-      ${conflict?`<div class="tmeta" style="color:var(--warn-ink)">${icon("warning")} Coincide en menos de 24 h con otra tarea pesada (scrub / prueba larga). Conviene separarlas.</div>`:""}
+      <div class="tmeta">${running?`<div class="prog">${_t("En ejecución…")}</div>`:L?`<div class="tlast ${L.ok?"":"bad"}"><span>${_t("Última")}</span> <b title="${fmtT(L.ts)}">${ago(L.ts)}</b>${L.trigger==="manual"?_t(" (manual)"):""} · ${L.ok?"✓":"✕"} ${esc(L.msg)}</div>`:`<div><span>${_t("Última")}</span> ${_t("nunca")}</div>`}</div>
+      ${conflict?`<div class="tmeta" style="color:var(--warn-ink)">${icon("warning")} ${_t("Coincide en menos de 24 h con otra tarea pesada (scrub / prueba larga). Conviene separarlas.")}</div>`:""}
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${isNew||na?"":`<button class="btn sm" onclick="runTask('${esc(t.id)}')" ${running||TK.running_task?"disabled":""}>Ejecutar ahora</button>`}<button class="btn sm" onclick="editTask(${ed?"null":i})" aria-expanded="${ed}">${ed?"Cerrar":"Editar"}</button></div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${isNew||na?"":`<button class="btn sm" onclick="runTask('${esc(t.id)}')" ${running||TK.running_task?"disabled":""}>${_t("Ejecutar ahora")}</button>`}<button class="btn sm" onclick="editTask(${ed?"null":i})" aria-expanded="${ed}">${ed?_t("Cerrar"):_t("Editar")}</button></div></div>
     ${ed?taskEditor(t,i):""}</div>`}
-function tlabel(t){return t.type==="smart"?"Prueba SMART "+(t.test==="long"?"larga":"corta"):({check:"Revisión de discos",scrub:"Scrub ZFS",report:"Resumen del estado"})[t.type]}
-function targetsTxt(t){if(t.type==="smart"){const n=(t.targets||[]).map(k=>(TK.disks.find(d=>d.key===k)||{}).name||"?");return`<div><span>Discos</span> <b>${n.length?esc(n.join(", ")):"todos"}</b></div>`}
-  if(t.type==="scrub")return`<div><span>Pools</span> <b>${(t.targets||[]).length?esc(t.targets.join(", ")):"todos"}</b></div>`;return""}
+function tlabel(t){return _t(t.type==="smart"?(t.test==="long"?"Prueba SMART larga":"Prueba SMART corta"):({check:"Revisión de discos",scrub:"Scrub ZFS",report:"Resumen del estado"})[t.type])}
+function targetsTxt(t){if(t.type==="smart"){const n=(t.targets||[]).map(k=>(TK.disks.find(d=>d.key===k)||{}).name||"?");return`<div><span>${_t("Discos")}</span> <b>${n.length?esc(n.join(", ")):_t("todos")}</b></div>`}
+  if(t.type==="scrub")return`<div><span>Pools</span> <b>${(t.targets||[]).length?esc(t.targets.join(", ")):_t("todos")}</b></div>`;return""}
 function taskEditor(t,i){const w=t.when||{freq:"daily",time:"04:00"};const f=w.freq;
-  const opt=(v,l)=>`<option value="${v}" ${f===v?"selected":""}>${l}</option>`;
+  const opt=(v,l)=>`<option value="${v}" ${f===v?"selected":""}>${_t(l)}</option>`;
   let h=`<div class="ted"><div class="fr">
-    <div class="f"><label for="w_freq">Repetir</label><select id="w_freq" onchange="wChange(${i})">${t.type==="check"?opt("interval","Cada cierto tiempo"):""}${opt("daily","Todos los días")}${opt("weekly","Ciertos días de la semana")}${opt("monthly","Una vez al mes (día fijo)")}${opt("monthly_nth","Una vez al mes (p.ej. 2º domingo)")}${t.type!=="check"?opt("interval","Cada cierto tiempo"):""}${opt("cron","Avanzado (cron)")}</select></div>`;
-  if(f==="interval")h+=`<div class="f"><label for="w_every">Cada</label><input id="w_every" type="number" min="1" value="${w.every||30}" oninput="wPreview(${i})"></div>
-    <div class="f"><label for="w_unit">Unidad</label><select id="w_unit" onchange="wPreview(${i})"><option value="min" ${w.unit!=="h"?"selected":""}>minutos</option><option value="h" ${w.unit==="h"?"selected":""}>horas</option></select></div>`;
-  if(f==="monthly")h+=`<div class="f"><label for="w_day">Día del mes</label><input id="w_day" type="number" min="1" max="31" value="${w.day||1}" oninput="wPreview(${i})"><div class="hint">Del 29 al 31 se salta los meses más cortos</div></div>`;
-  if(f==="monthly_nth")h+=`<div class="f"><label for="w_nth">Semana</label><select id="w_nth" onchange="wPreview(${i})">${[[1,"Primer"],[2,"Segundo"],[3,"Tercer"],[4,"Cuarto"]].map(([v,l])=>`<option value="${v}" ${w.nth==v?"selected":""}>${l}</option>`).join("")}</select></div>
-    <div class="f"><label for="w_dow">Día</label><select id="w_dow" onchange="wPreview(${i})">${DOWS.map(([v])=>`<option value="${v}" ${w.dow==v?"selected":""}>${DOWN[v]}</option>`).join("")}</select></div>`;
-  if(["daily","weekly","monthly","monthly_nth"].includes(f))h+=`<div class="f"><label for="w_time">Hora</label><input id="w_time" type="time" value="${esc(w.time||"04:00")}" oninput="wPreview(${i})"></div>`;
-  if(f==="cron")h+=`<div class="f" style="grid-column:span 2"><label for="w_cron">Expresión cron (minuto hora día mes día-semana)</label><input id="w_cron" type="text" value="${esc(w.cron||"0 4 * * *")}" oninput="wPreview(${i})"><div class="hint">Ojo: si fijas día del mes y día de la semana, cron corre en <b>ambos</b> casos.</div></div>`;
+    <div class="f"><label for="w_freq">${_t("Repetir")}</label><select id="w_freq" onchange="wChange(${i})">${t.type==="check"?opt("interval","Cada cierto tiempo"):""}${opt("daily","Todos los días")}${opt("weekly","Ciertos días de la semana")}${opt("monthly","Una vez al mes (día fijo)")}${opt("monthly_nth","Una vez al mes (p.ej. 2º domingo)")}${t.type!=="check"?opt("interval","Cada cierto tiempo"):""}${opt("cron","Avanzado (cron)")}</select></div>`;
+  if(f==="interval")h+=`<div class="f"><label for="w_every">${_t("Cada")}</label><input id="w_every" type="number" min="1" value="${w.every||30}" oninput="wPreview(${i})"></div>
+    <div class="f"><label for="w_unit">${_t("Unidad")}</label><select id="w_unit" onchange="wPreview(${i})"><option value="min" ${w.unit!=="h"?"selected":""}>${_t("minutos")}</option><option value="h" ${w.unit==="h"?"selected":""}>${_t("horas")}</option></select></div>`;
+  if(f==="monthly")h+=`<div class="f"><label for="w_day">${_t("Día del mes")}</label><input id="w_day" type="number" min="1" max="31" value="${w.day||1}" oninput="wPreview(${i})"><div class="hint">${_t("Del 29 al 31 se salta los meses más cortos")}</div></div>`;
+  if(f==="monthly_nth")h+=`<div class="f"><label for="w_nth">${_t("Semana")}</label><select id="w_nth" onchange="wPreview(${i})">${[[1,"Primer"],[2,"Segundo"],[3,"Tercer"],[4,"Cuarto"]].map(([v,l])=>`<option value="${v}" ${w.nth==v?"selected":""}>${_t(l)}</option>`).join("")}</select></div>
+    <div class="f"><label for="w_dow">${_t("Día")}</label><select id="w_dow" onchange="wPreview(${i})">${DOWS.map(([v])=>`<option value="${v}" ${w.dow==v?"selected":""}>${_t(DOWN[v])}</option>`).join("")}</select></div>`;
+  if(["daily","weekly","monthly","monthly_nth"].includes(f))h+=`<div class="f"><label for="w_time">${_t("Hora")}</label><input id="w_time" type="time" value="${esc(w.time||"04:00")}" oninput="wPreview(${i})"></div>`;
+  if(f==="cron")h+=`<div class="f" style="grid-column:span 2"><label for="w_cron">${_t("Expresión cron (minuto hora día mes día-semana)")}</label><input id="w_cron" type="text" value="${esc(w.cron||"0 4 * * *")}" oninput="wPreview(${i})"><div class="hint">${_t("Ojo: si fijas día del mes y día de la semana, cron corre en <b>ambos</b> casos.")}</div></div>`;
   h+=`</div>`;
-  if(f==="weekly"){const ds=w.days||[];h+=`<div><div class="hint" style="margin:0 0 5px">Días</div><div class="days" role="group" aria-label="Días de la semana">${DOWS.map(([v,l])=>`<button type="button" aria-pressed="${ds.includes(v)}" data-d="${v}" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true');wPreview(${i})" title="${DOWN[v]}">${l}</button>`).join("")}</div></div>`}
+  if(f==="weekly"){const ds=w.days||[];h+=`<div><div class="hint" style="margin:0 0 5px">${_t("Días")}</div><div class="days" role="group" aria-label="${_t("Días de la semana")}">${DOWS.map(([v,l])=>`<button type="button" aria-pressed="${ds.includes(v)}" data-d="${v}" onclick="this.setAttribute('aria-pressed',this.getAttribute('aria-pressed')!=='true');wPreview(${i})" title="${_t(DOWN[v])}">${_t(l)}</button>`).join("")}</div></div>`}
   h+=`<div class="prev" id="w_prev" aria-live="polite">…</div>`;
-  if(t.type==="smart"){h+=`<div class="fr"><div class="f"><label for="t_test">Tipo de prueba</label><select id="t_test"><option value="short" ${t.test!=="long"?"selected":""}>Corta (1–2 min)</option><option value="long" ${t.test==="long"?"selected":""}>Larga (horas)</option></select></div></div>
-    <div><div class="hint" style="margin:0 0 5px">Discos (ninguno marcado = todos)</div><div class="disks-sel">${TK.disks.map(d=>`<label class="chk"><input type="checkbox" data-tg value="${esc(d.key)}" ${(t.targets||[]).includes(d.key)?"checked":""}> ${esc(d.label)}</label>`).join("")}</div></div>`}
-  if(t.type==="scrub")h+=`<div><div class="hint" style="margin:0 0 5px">Pools (ninguno marcado = todos)</div><div class="disks-sel">${TK.pools.map(p=>`<label class="chk"><input type="checkbox" data-tg value="${esc(p.name)}" ${(t.targets||[]).includes(p.name)?"checked":""}> ${esc(p.name)}</label>`).join("")}</div>
-    <div class="hint">Si el pool está degradado o ya tiene un scrub o resilver en curso, no se inicia.</div></div>`;
+  if(t.type==="smart"){h+=`<div class="fr"><div class="f"><label for="t_test">${_t("Tipo de prueba")}</label><select id="t_test"><option value="short" ${t.test!=="long"?"selected":""}>${_t("Corta (1–2 min)")}</option><option value="long" ${t.test==="long"?"selected":""}>${_t("Larga (horas)")}</option></select></div></div>
+    <div><div class="hint" style="margin:0 0 5px">${_t("Discos (ninguno marcado = todos)")}</div><div class="disks-sel">${TK.disks.map(d=>`<label class="chk"><input type="checkbox" data-tg value="${esc(d.key)}" ${(t.targets||[]).includes(d.key)?"checked":""}> ${esc(d.label)}</label>`).join("")}</div></div>`}
+  if(t.type==="scrub")h+=`<div><div class="hint" style="margin:0 0 5px">${_t("Pools (ninguno marcado = todos)")}</div><div class="disks-sel">${TK.pools.map(p=>`<label class="chk"><input type="checkbox" data-tg value="${esc(p.name)}" ${(t.targets||[]).includes(p.name)?"checked":""}> ${esc(p.name)}</label>`).join("")}</div>
+    <div class="hint">${_t("Si el pool está degradado o ya tiene un scrub o resilver en curso, no se inicia.")}</div></div>`;
   if(t.type==="scrub")h+=C("t_nstart","Avisar cuando empieza (con la hora estimada de término)",t.notify_start!==false);
   if(t.type==="smart"||t.type==="scrub")h+=C("t_notify",`Avisar también cuando termina sin problemas <span class="muted">(si encuentra errores, avisa siempre)</span>`,t.notify_ok);
-  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" onclick="saveTask(${i})">Guardar</button><button class="btn sm" onclick="editTask(null)">Cancelar</button>
-    ${t.type!=="check"?`<button class="btn sm" style="margin-left:auto;color:var(--crit-ink)" onclick="delTask(${i})">Eliminar tarea</button>`:""}</div></div>`;
+  h+=`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary sm" onclick="saveTask(${i})">${_t("Guardar")}</button><button class="btn sm" onclick="editTask(null)">${_t("Cancelar")}</button>
+    ${t.type!=="check"?`<button class="btn sm" style="margin-left:auto;color:var(--crit-ink)" onclick="delTask(${i})">${_t("Eliminar tarea")}</button>`:""}</div></div>`;
   return h}
 function readWhen(){const g=id=>document.getElementById(id),f=g("w_freq").value,w={freq:f};
   if(f==="interval"){w.every=Number(g("w_every")?.value||30);w.unit=g("w_unit")?.value||"min"}
@@ -542,7 +552,7 @@ let _wp=0;
 async function wPreview(i){const el=$("#w_prev");if(!el)return;const n=++_wp;
   const r=await api("/api/when-preview",{method:"POST",body:{when:readWhen()}}).catch(e=>({valid:false,error:e.message}));
   if(n!==_wp)return;
-  el.innerHTML=r.valid?`<b>${esc(r.describe)}</b> · próximas: ${r.next_h.map(esc).join(" · ")}`:`<span style="color:var(--crit-ink)">${esc(r.error||"Horario inválido")}</span>`}
+  el.innerHTML=r.valid?`<b>${esc(r.describe)}</b> · ${_t("próximas:")} ${r.next_h.map(esc).join(" · ")}`:`<span style="color:var(--crit-ink)">${esc(r.error||_t("Horario inválido"))}</span>`}
 function editTask(i){EDIT=i;renderTasks();if(i!==null)document.getElementById("task-"+i)?.scrollIntoView({block:"nearest",behavior:"smooth"})}
 function addTask(type){
   const base={id:type+"-"+Math.random().toString(36).slice(2,7),type,enabled:true,targets:[],next:[],describe:"",last:null};
@@ -555,21 +565,24 @@ async function saveTask(i){const t={...TK.tasks[i]};t.when=readWhen();
   if(t.type==="smart"){t.test=$("#t_test").value}
   if(t.type==="smart"||t.type==="scrub"){t.targets=[...document.querySelectorAll("input[data-tg]:checked")].map(x=>x.value);t.notify_ok=$("#t_notify").checked;if($("#t_nstart"))t.notify_start=$("#t_nstart").checked}
   const list=TK.tasks.map((x,k)=>k===i?t:x).filter(x=>x.label||x===t);
-  try{await putTasks(list);toast("Tarea guardada")}catch(e){toast(e.message,6000)}}
+  try{await putTasks(list);toast(_t("Tarea guardada"))}catch(e){toast(e.message,6000)}}
 async function toggleTask(i,on){const list=TK.tasks.filter(x=>x.label).map(x=>x===TK.tasks[i]?{...x,enabled:on}:x);
   if(!TK.tasks[i].label){TK.tasks[i].enabled=on;return}
-  try{await putTasks(list);toast(on?"Tarea activada":"Tarea desactivada")}catch(e){toast(e.message,6000);loadTasks(true)}}
-async function delTask(i){const t=TK.tasks[i];if(t.label&&!confirm(`¿Eliminar la tarea «${t.label}»?`))return;
-  try{await putTasks(TK.tasks.filter((x,k)=>k!==i&&x.label));toast("Tarea eliminada")}catch(e){toast(e.message,6000)}}
+  try{await putTasks(list);toast(on?_t("Tarea activada"):_t("Tarea desactivada"))}catch(e){toast(e.message,6000);loadTasks(true)}}
+async function delTask(i){const t=TK.tasks[i];if(t.label&&!confirm(_t("¿Eliminar la tarea «{name}»?",{name:t.label})))return;
+  try{await putTasks(TK.tasks.filter((x,k)=>k!==i&&x.label));toast(_t("Tarea eliminada"))}catch(e){toast(e.message,6000)}}
 async function runTask(id){const t=TK.tasks.find(x=>x.id===id);
-  if(t.type==="scrub"&&!confirm("¿Iniciar el scrub ahora? Puede tardar varias horas y los discos estarán más ocupados."))return;
-  if(t.type==="smart"&&t.test==="long"&&!confirm("¿Iniciar la prueba larga ahora? En discos grandes tarda muchas horas."))return;
-  try{await api(`/api/tasks/${encodeURIComponent(id)}/run`,{method:"POST"});toast("Tarea iniciada");TK.running_task=id;renderTasks();
+  if(t.type==="scrub"&&!confirm(_t("¿Iniciar el scrub ahora? Puede tardar varias horas y los discos estarán más ocupados.")))return;
+  if(t.type==="smart"&&t.test==="long"&&!confirm(_t("¿Iniciar la prueba larga ahora? En discos grandes tarda muchas horas.")))return;
+  try{await api(`/api/tasks/${encodeURIComponent(id)}/run`,{method:"POST"});toast(_t("Tarea iniciada"));TK.running_task=id;renderTasks();
     const poll=setInterval(async()=>{await loadTasks(true);if(!TK.running_task){clearInterval(poll);const L=TK.tasks.find(x=>x.id===id)?.last;if(L)toast((L.ok?"✓ ":"✕ ")+L.msg,7000)}},2000)}catch(e){toast(e.message,6000)}}
-async function saveSys(){try{await api("/api/settings",{method:"PUT",body:{discovery_minutes:Number($("#disc_min").value),skip_standby:$("#skip_standby").checked}});toast("Guardado")}catch(e){toast(e.message,6000)}}
+async function saveSys(){try{await api("/api/settings",{method:"PUT",body:{discovery_minutes:Number($("#disc_min").value),skip_standby:$("#skip_standby").checked}});toast(_t("Guardado"))}catch(e){toast(e.message,6000)}}
 
 // ------------------------------------------------------------------ arranque
-(async()=>{fetch("/health").then(r=>r.json()).then(j=>{if(j.version)$("#ver").textContent="v"+j.version}).catch(()=>{});
+async function setLanguage(l){if(l===LANG)return;try{await api("/api/settings",{method:"PUT",body:{language:l}});setLang(l);location.reload()}catch(e){toast(e.message,6000)}}
+(async()=>{const hj=await fetch("/health").then(r=>r.json()).catch(()=>({}));
+  if(hj.version)$("#ver").textContent="v"+hj.version;
+  setLang(hj.language);document.querySelectorAll(".lang button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.lang===LANG));tStatic();
   try{CFG=(await api("/api/settings")).settings}catch(e){}
   const h=(location.hash||"").slice(1);show(["panel","alerts","tasks","log","cfg"].includes(h)?h:"panel");
   if(h.startsWith("disk="))openDisk(decodeURIComponent(h.slice(5))).catch(e=>toast(e.message));

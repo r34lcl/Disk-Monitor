@@ -94,10 +94,9 @@ Luego sigue en la [sección 4](#4-primer-ingreso-y-verificación).
 
 Si prefieres no usar el script:
 
-**3.1. Ubicar los archivos**
+**3.1. Descargar el código** (en la carpeta donde quieras instalarlo)
 
 ```sh
-mkdir -p /opt && cd /opt          # o la ruta que prefieras
 git clone https://github.com/r34lcl/Disk-Monitor.git disk-monitor
 cd disk-monitor
 mkdir -p data

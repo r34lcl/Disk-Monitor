@@ -127,6 +127,15 @@ async def _check(trigger: str, t0: float) -> dict:
                 disks[i] = {**match, "state": "standby", "dev": d["dev"], "name": d["name"],
                             "stale_since": match.get("checked_at")}
             else:
+                # nunca se ha leído este disco: despertarlo una sola vez para tener datos desde el inicio
+                # (las próximas revisiones usan esta lectura mientras siga en reposo)
+                full = await asyncio.to_thread(collector.read_smart,
+                                               {"dev": d["dev"], "type": d.get("dtype") or "auto", "name": d["name"]}, False)
+                if full.get("state") in ("ok", "nosmart"):
+                    log.info("%s estaba en reposo y sin lectura previa: se leyó una vez", d["name"])
+                    full.update({k: d[k] for k in ("transport", "hctl") if d.get(k)})
+                    disks[i] = full
+                    continue
                 d.update({"model": (b.get("model") or "?").strip(), "serial": b.get("serial"), "wwn": wwn,
                           "capacity": int(b["size"]) if b.get("size") else None,
                           "key": wwn or f"dev_{d['name']}"})

@@ -52,6 +52,7 @@ const I18N_EN = {
   "Este dispositivo no entrega datos SMART (disco virtual, adaptador USB o controladora que no los expone). Sólo se vigila que siga presente.":
     "This device does not report SMART data (virtual disk, USB adapter or a controller that hides it). Only its presence is monitored.",
   "datos de {ago}": "data from {ago}",
+  "En reposo y aún sin lectura: los datos aparecerán cuando el disco esté activo durante una revisión.": "In standby and not read yet: data will appear once the disk is active during a check.",
   // pools
   "en pausa": "paused", "en curso": "in progress", " · faltan {d}": " · {d} left", "Avance del {w}": "{w} progress",
   "Reanudar": "Resume", "Pausar": "Pause", "Detener": "Stop", "Último scrub": "Last scrub", "{n} errores": "{n} errors",

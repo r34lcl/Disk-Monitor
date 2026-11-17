@@ -2,7 +2,7 @@
 
 [English](README.md) · **Español**
 
-Versión 1.2 · [KqK.cl](https://kqk.cl)
+Versión 1.2.1 · [KqK.cl](https://kqk.cl)
 
 Panel web autoalojado que vigila los **discos físicos** de un servidor Linux y avisa cuando algo anda mal.
 
@@ -342,7 +342,7 @@ El historial se depura solo según los "días de historial" configurados (120 po
 `smartctl --scan-open` detecta MegaRAID/cciss/Areca de forma automática. Si tu controladora no aparece, puede que el firmware no exponga SMART a través del arreglo; revisa la documentación de smartctl para tu modelo (`-d megaraid,N`, `-d cciss,N`, etc.).
 
 **Un disco aparece "En reposo"**
-Está detenido (spin-down) y, con la opción "No despertar discos en reposo", se muestra su última lectura. Desactívala si prefieres leerlo siempre (lo despertará en cada revisión).
+Está detenido (spin-down) y, con la opción "No despertar discos en reposo", se muestra su última lectura. Si nunca se había leído (por ejemplo, recién instalado), se despierta una sola vez para tener datos. Desactívala si prefieres leerlo siempre (lo despertará en cada revisión).
 
 **ZFS no aparece**
 Sólo se muestra si el host tiene el módulo ZFS cargado (`/dev/zfs`). El panel indica si se usa el `zpool` del host o el del contenedor. Para comprobarlo: `docker exec disk-monitor zpool status`.
@@ -400,7 +400,7 @@ Cambia `HOST_PORT` en el `.env` y ejecuta `docker compose up -d`.
 
 | Método | Ruta | Uso |
 |---|---|---|
-| GET | `/health` | Sin autenticación. Devuelve `{"ok": true, "version": "1.2", "last_check": <epoch>, "language": "es"}` |
+| GET | `/health` | Sin autenticación. Devuelve `{"ok": true, "version": "1.2.1", "last_check": <epoch>, "language": "es"}` |
 | GET | `/api/status` | Estado completo: discos, pools, sistemas de archivos y alertas activas |
 | GET | `/api/inventory` | Inventario de discos (presentes y ausentes) |
 | POST | `/api/check` | Lanzar una revisión |

@@ -302,9 +302,9 @@ function diskCard(d){
   return`<div class="card disk h-${lvl}" role="button" tabindex="0" aria-label="${_t("Ver detalle de")} ${esc(d.name)}, ${esc(d.model)}: ${esc(_t(SEVL[lvl]||lvl))}" onclick="openDisk('${esc(d.key)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDisk('${esc(d.key)}')}">
   <div class="dhead"><div style="min-width:0"><div class="dname">${esc(d.name)} <span class="muted" style="font-weight:400;font-size:12px">${esc(d.dev)}</span></div>
   <div class="dmodel">${esc(d.model)}${d.serial&&!/^0+$/.test(d.serial)?" · "+esc(d.serial):""}</div></div>
-  <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${pill(lvl)}${d.state==="standby"?pill("standby"):""}</div></div>
+  <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${d.state==="standby"&&!d.stale_since&&d.temp==null?"":pill(lvl)}${d.state==="standby"?pill("standby"):""}</div></div>
   <div class="tags">${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join("")}</div>
-  ${d.state==="error"?`<div style="margin-top:10px;color:var(--crit-ink)">${esc(d.error)}</div>`:d.state==="nosmart"?`<div style="margin-top:10px" class="t2">${_t("Este dispositivo no entrega datos SMART (disco virtual, adaptador USB o controladora que no los expone). Sólo se vigila que siga presente.")}</div><div class="muted" style="font-size:12px;margin-top:4px">${esc(d.error||"")}</div>`:`
+  ${d.state==="error"?`<div style="margin-top:10px;color:var(--crit-ink)">${esc(d.error)}</div>`:d.state==="standby"&&!d.stale_since&&d.temp==null?`<div style="margin-top:10px" class="t2">${_t("En reposo y aún sin lectura: los datos aparecerán cuando el disco esté activo durante una revisión.")}</div>`:d.state==="nosmart"?`<div style="margin-top:10px" class="t2">${_t("Este dispositivo no entrega datos SMART (disco virtual, adaptador USB o controladora que no los expone). Sólo se vigila que siga presente.")}</div><div class="muted" style="font-size:12px;margin-top:4px">${esc(d.error||"")}</div>`:`
   <div class="trow"><div class="temp ${tempCls}">${d.temp??"—"}<small> °C</small></div>${sparkSVG(ST.spark[d.key])}</div>
   <div class="kv">${k.join("")}</div>`}
   <div class="foot"><span>${stTxt}</span>${d.stale_since?`<span class="muted">${_t("datos de {ago}",{ago:ago(d.stale_since)})}</span>`:""}</div></div>`;

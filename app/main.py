@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import base64
 import hashlib
 import hmac
@@ -21,6 +22,9 @@ from .i18n import _, set_lang
 from .version import VERSION
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# httpx registra cada URL en INFO, y la de Telegram lleva el token del bot
+for _quiet in ("httpx", "httpcore"):
+    logging.getLogger(_quiet).setLevel(logging.WARNING)
 log = logging.getLogger("disk-monitor")
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 APP_USER = os.environ.get("APP_USER", "admin")
@@ -38,7 +42,7 @@ EXPORT_SECRETS = SECRET_FIELDS | {("apprise", "urls")}
 SECRET_BINDINGS = {"email": ("host", "port", "username", "security"), "telegram": ("chat_ids",)}
 # proxies cuyo X-Forwarded-For / X-Forwarded-Proto se acepta (por defecto: loopback y redes privadas)
 TRUSTED_PROXIES = [ipaddress.ip_network(n.strip(), strict=False) for n in os.environ.get(
-    "TRUSTED_PROXIES", "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7").split(",") if n.strip()]
+    "TRUSTED_PROXIES", "127.0.0.1/32,::1/128").split(",") if n.strip()]
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "auto").lower()   # auto | 1 | 0
 MAX_FAIL_KEYS = 5000
 FAIL_WINDOW, FAIL_MAX = 900, 10
@@ -169,6 +173,17 @@ SEC_HEADERS = {"X-Frame-Options": "DENY", "Content-Security-Policy": "frame-ance
                "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin"}
 
 
+MAX_PUBLIC_BODY = 4096
+
+
+def _small_body(request: Request) -> bool:
+    """Las rutas públicas (login) no aceptan cuerpos grandes ni sin largo declarado."""
+    try:
+        return 0 <= int(request.headers.get("content-length", "")) <= MAX_PUBLIC_BODY
+    except ValueError:
+        return False
+
+
 @app.middleware("http")
 async def auth(request: Request, call_next):
     path = request.url.path
@@ -180,14 +195,21 @@ async def auth(request: Request, call_next):
         return HTMLResponse(f"<!doctype html><meta charset=utf-8><title>Disk Monitor</title>"
                             f"<p style='font:16px system-ui;max-width:560px;margin:15vh auto;padding:16px'>"
                             f"<b>{_('Disk Monitor no está configurado.')}</b><br><br>{NO_PASSWORD_MSG[lang]}</p>", status_code=503)
+    resp = await _gate(request, path, call_next)
+    for k, v in SEC_HEADERS.items():
+        resp.headers.setdefault(k, v)
+    return resp
+
+
+async def _gate(request: Request, path: str, call_next):
     if _cross_site(request):
         return JSONResponse({"detail": _("petición rechazada: origen no permitido")}, status_code=403)
+    public = path in PUBLIC_PATHS and not AUTH_DISABLED
+    if public and request.method not in ("GET", "HEAD") and not _small_body(request):
+        return JSONResponse({"detail": _("petición demasiado grande")}, status_code=413)
     if (AUTH_DISABLED or path in PUBLIC_PATHS
             or _valid_session(request.cookies.get(SESSION_COOKIE)) or _basic_auth(request)):
-        resp = await call_next(request)
-        for k, v in SEC_HEADERS.items():
-            resp.headers.setdefault(k, v)
-        return resp
+        return await call_next(request)
     if path.startswith("/api/"):
         return JSONResponse({"detail": _("no autenticado")}, status_code=401)
     return RedirectResponse("/login", status_code=303)
@@ -201,11 +223,18 @@ async def login_page(request: Request):
 
 
 @app.post("/api/login")
-async def login(request: Request, body: dict):
+async def login(request: Request):
     ip = _client_ip(request)
     now = time.time()
     if _locked(ip, now):
         raise HTTPException(429, _("demasiados intentos, espera unos minutos"))
+    raw = await request.body()
+    try:
+        body = json.loads(raw) if len(raw) <= MAX_PUBLIC_BODY else None
+    except ValueError:
+        body = None
+    if not isinstance(body, dict):
+        raise HTTPException(400, _("petición inválida"))
     user, pw = str(body.get("username", "")), str(body.get("password", ""))
     if not _creds_ok(user, pw):
         _record_fail(ip, now)
@@ -287,7 +316,7 @@ async def api_disk(key: str, days: int = 7):
     d = next((x for x in st.get("disks", []) if x["key"] == key), None)
     if not d:
         raise HTTPException(404, _("disco no encontrado"))
-    since = int(time.time() - min(days, 365) * 86400)
+    since = int(time.time() - max(1, min(days, 365)) * 86400)
     hist = {n: db.get_metrics(key, n, since) for n in ("temp", "reallocated", "pending", "crc_errors", "percentage_used")}
     alerts = [a for a in db.list_alerts(500) if a["subject"] == key]
     return {"disk": d, "history": hist, "alerts": alerts[:50]}
@@ -295,7 +324,7 @@ async def api_disk(key: str, days: int = 7):
 
 @app.get("/api/history")
 async def api_history(subject: str, name: str, days: int = 7):
-    return db.get_metrics(subject, name, int(time.time() - min(days, 365) * 86400))
+    return db.get_metrics(subject, name, int(time.time() - max(1, min(days, 365)) * 86400))
 
 
 @app.post("/api/check")
@@ -347,13 +376,15 @@ async def api_selftest(body: dict):
     if kind not in ("short", "long", "conveyance"):
         raise HTTPException(400, _("tipo inválido"))
     keys = body.get("disks") or []
+    if not isinstance(keys, list) or not all(isinstance(k, str) for k in keys):
+        raise HTTPException(400, _("lista de discos inválida"))
     res = await worker.run_selftests({"type": kind, "disks": keys})
     return {"results": res}
 
 
 @app.get("/api/alerts")
 async def api_alerts(limit: int = 300):
-    return db.list_alerts(min(limit, 2000))
+    return db.list_alerts(max(1, min(limit, 2000)))
 
 
 @app.post("/api/alerts/{aid}/ack")
@@ -444,6 +475,8 @@ async def import_settings(body: dict):
         raise HTTPException(400, _("el archivo no es una exportación de Disk Monitor"))
     for k in ("server_name", "base_url", "ignored_disks"):
         s.pop(k, None)
+    if "language" in s and s["language"] not in ("es", "en"):
+        raise HTTPException(400, _("idioma inválido"))
     cur = db.get_settings()
     if "tasks" not in s and any(k in s for k in ("schedule", "selftests", "report")):
         s["tasks"] = db._migrate_tasks(s)      # exportación de la versión 1.0

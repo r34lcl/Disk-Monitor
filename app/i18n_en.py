@@ -298,4 +298,9 @@ EN = {
     "{k}: debe ser un objeto": "{k}: must be an object",
     "{k}: valor inválido": "{k}: invalid value",
     "{k}: debe estar entre {lo} y {hi}": "{k}: must be between {lo} and {hi}",
+    "petición demasiado grande": "request too large",
+    "petición inválida": "invalid request",
+    "lista de discos inválida": "invalid disk list",
+    "días de la semana inválidos": "invalid days of the week",
+    "{task}: horario inválido": "{task}: invalid schedule",
 }

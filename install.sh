@@ -8,7 +8,7 @@ command -v docker >/dev/null || { echo "Falta Docker"; exit 1; }
 if docker compose version >/dev/null 2>&1; then DC="docker compose"
 elif command -v docker-compose >/dev/null; then DC="docker-compose"
 else echo "Falta docker compose"; exit 1; fi
-mkdir -p data
+mkdir -p data && chmod 700 data
 if [ ! -f .env ]; then
   PASS=$(head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 18)
   umask 077

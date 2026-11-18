@@ -49,14 +49,17 @@ def to_cron(w: dict) -> str | None:
         return None
     if f == "cron":
         expr = (w.get("cron") or "").strip()
-        if not croniter.is_valid(expr):
+        if len(expr.split()) != 5 or not croniter.is_valid(expr):     # sin campo de segundos
             raise ValueError(_("expresión cron inválida: {e}", e=repr(expr)))
         return expr
     h, m = _hm(w.get("time"))
     if f == "daily":
         return f"{m} {h} * * *"
     if f == "weekly":
-        days = sorted({int(d) for d in (w.get("days") or []) if 0 <= int(d) <= 6})
+        raw = w.get("days")
+        if not isinstance(raw, list) or any(isinstance(d, bool) or not isinstance(d, int) or not 0 <= d <= 6 for d in raw):
+            raise ValueError(_("días de la semana inválidos"))
+        days = sorted(set(raw))
         if not days:
             raise ValueError(_("elige al menos un día de la semana"))
         return f"{m} {h} * * {','.join(map(str, days))}"
@@ -103,7 +106,7 @@ def _describe_es(w: dict) -> str:
             return f"El día {int(w['day'])} de cada mes {at}"
         if f == "monthly_nth":
             return f"El {NTH[int(w['nth'])]} {DOW[int(w['dow'])]} de cada mes {at}"
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, IndexError):
         pass
     return "Horario inválido"
 
@@ -138,7 +141,7 @@ def _describe_en(w: dict) -> str:
             return f"On the {_ord(int(w['day']))} of every month {at}"
         if f == "monthly_nth":
             return f"On the {NTH_EN[int(w['nth'])]} {DOW_EN[int(w['dow'])]} of every month {at}"
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, IndexError):
         pass
     return "Invalid schedule"
 
@@ -146,7 +149,7 @@ def _describe_en(w: dict) -> str:
 def cron_next(expr: str, base: float) -> float | None:
     try:
         return croniter(expr, datetime.fromtimestamp(base).astimezone()).get_next(float)
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, IndexError):
         return None
 
 

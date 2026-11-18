@@ -107,8 +107,17 @@ async def _check(trigger: str, t0: float) -> dict:
     s = db.get_settings()
     set_lang(s.get("language"))
     disks = await collector.collect_disks(s["skip_standby"])
-    pools = await asyncio.to_thread(collector.collect_zfs)
-    fss = await asyncio.to_thread(collector.collect_fs, s.get("ignored_mounts") or [])
+    # un colector que falla no debe impedir las alertas de los demás
+    try:
+        pools = await asyncio.to_thread(collector.collect_zfs)
+    except Exception as e:  # noqa: BLE001
+        log.exception("falló la lectura de ZFS")
+        pools = [{"name": "?", "error": f"{type(e).__name__}: {e}"[:300]}]
+    try:
+        fss = await asyncio.to_thread(collector.collect_fs, s.get("ignored_mounts") or [])
+    except Exception:  # noqa: BLE001
+        log.exception("falló la lectura de los sistemas de archivos")
+        fss = []
     prev_status = db.get_state("last_status", {}) or {}
     prev_disks = {d["key"]: d for d in prev_status.get("disks", [])}
     known = db.get_state("known_disks", {}) or {}
@@ -120,10 +129,12 @@ async def _check(trigger: str, t0: float) -> dict:
     for i, d in enumerate(disks):
         if d["state"] == "standby":
             b = blk.get(d["dev"]) or {}
-            wwn = b.get("wwn")
-            match = next((p for p in prev_disks.values() if (wwn and p.get("wwn") == wwn)
-                          or (b.get("serial") and p.get("serial") == b.get("serial"))
-                          or p.get("dev") == d["dev"]), None)
+            wwn, ser = b.get("wwn"), b.get("serial")
+            prevs = list(prev_disks.values())
+            # identidad primero (wwn, luego serie); el nombre /dev sólo si lsblk no da ninguna
+            match = (next((p for p in prevs if wwn and p.get("wwn") == wwn), None)
+                     or next((p for p in prevs if ser and p.get("serial") == ser), None)
+                     or (None if (wwn or ser) else next((p for p in prevs if p.get("dev") == d["dev"]), None)))
             if match:
                 disks[i] = {**match, "state": "standby", "dev": d["dev"], "name": d["name"],
                             "stale_since": match.get("checked_at")}
@@ -184,7 +195,7 @@ async def _check(trigger: str, t0: float) -> dict:
     db.set_state("last_counters", last_counters)
     db.set_state("last_selftests", last_selftests)
 
-    notify_msg = reconcile(issues, events, s, now, trigger)
+    notify_msg = reconcile(issues, events, s, now, trigger, held=_held(disks, pools))
     scrub_msgs = track_scrubs(pools, s)
 
     # salud por disco / pool / fs = la peor alerta activa
@@ -259,8 +270,17 @@ def _plural(n: int, one: str, many: str) -> str:
     return f"{n} {_(one) if n == 1 else _(many)}"
 
 
+def _held(disks: list[dict], pools: list[dict]) -> set[str]:
+    """Sujetos cuyas alertas no se pueden dar por resueltas en esta revisión porque no hubo lectura:
+    discos en reposo / sin SMART / sin respuesta, y todos los pools si zpool falló."""
+    held = {d["key"] for d in disks if d.get("state") in ("standby", "nosmart", "error")}
+    if any(p.get("error") for p in pools):
+        held.add("zpool:")
+    return held
+
+
 def reconcile(issues: list[dict], events: list[dict], s: dict, now: float, trigger: str = "programada",
-              scope: str | None = None) -> dict | None:
+              scope: str | None = None, held: set[str] | None = None) -> dict | None:
     """scope: sólo conciliar alertas cuyo sujeto empiece así (p.ej. "zpool:"), sin tocar las demás."""
     set_lang(s.get("language"))
     cfg = s["alerts"]
@@ -294,8 +314,12 @@ def reconcile(issues: list[dict], events: list[dict], s: dict, now: float, trigg
             reminders.append({**i, "since": a["first_seen"]})
         else:
             db.touch_alert(a["id"], i, now, False)
+    held = held or set()
     for k, a in active.items():
         if k not in current:
+            subj = a["subject"]
+            if subj in held or ("zpool:" in held and subj.startswith("zpool:")):
+                continue                      # sin lectura nueva: la alerta sigue abierta
             db.resolve_alert(a["id"], now)
             if cfg.get("notify_resolved", True) and a["last_notified"]:
                 resolved.append(a)
@@ -629,7 +653,11 @@ def track_scrubs(pools: list[dict], s: dict) -> list[dict]:
 async def zfs_watch() -> None:
     """Cada 5 min (zpool status no despierta discos): avance del scrub en el panel, aviso al iniciar/terminar
     y alertas inmediatas si el pool se degrada o aparecen errores, sin esperar la próxima revisión."""
-    pools = await asyncio.to_thread(collector.collect_zfs)
+    try:
+        pools = await asyncio.to_thread(collector.collect_zfs)
+    except Exception:  # noqa: BLE001
+        log.exception("falló la lectura de ZFS")
+        return
     if not pools:
         return
     s = db.get_settings()
@@ -640,7 +668,7 @@ async def zfs_watch() -> None:
         return                       # hay una revisión completa en curso: ella concilia todo
     async with _lock:
         issues, _ = rules.evaluate([], pools, [], s, {}, {}, {})
-        msg = reconcile(issues, [], s, time.time(), "de ZFS (cada 5 min)", scope="zpool:")
+        msg = reconcile(issues, [], s, time.time(), "de ZFS (cada 5 min)", scope="zpool:", held=_held([], pools))
         worst: dict[str, str] = {}
         for a in db.active_alerts().values():
             if SEV[a["severity"]] > SEV.get(worst.get(a["subject"], "ok"), 0):
@@ -679,13 +707,15 @@ def validate_tasks(tasks: list[dict]) -> None:
         ids.add(t["id"])
         if t["type"] == "smart" and t.get("test") not in ("short", "long"):
             raise ValueError(_("la prueba SMART debe ser corta o larga"))
+        if not isinstance(t.get("when"), dict):
+            raise ValueError(_("{task}: horario inválido", task=task_name(t)))
         try:
-            sched.to_cron(t.get("when") or {})
+            sched.to_cron(t["when"])
         except ValueError as e:
             raise ValueError(f"{task_name(t)}: {e}") from None
-        if t["type"] in ("smart", "scrub") and sched.interval_seconds(t["when"]) and sched.interval_seconds(t["when"]) < 3600:
+        if t["type"] in ("smart", "scrub", "report") and sched.interval_seconds(t["when"]) and sched.interval_seconds(t["when"]) < 3600:
             raise ValueError(_("{task}: no tiene sentido repetirla más de una vez por hora", task=task_name(t)))
-        if t["type"] in ("smart", "scrub") and t["when"].get("freq") == "cron":
+        if t["type"] in ("smart", "scrub", "report") and t["when"].get("freq") == "cron":
             nx = sched.next_runs(t["when"], 4)
             if any(b - a < 3600 for a, b in zip(nx, nx[1:])):
                 raise ValueError(_("{task}: no tiene sentido repetirla más de una vez por hora", task=task_name(t)))

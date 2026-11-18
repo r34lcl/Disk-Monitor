@@ -65,7 +65,10 @@ def conn() -> sqlite3.Connection:
 
 
 def init() -> None:
-    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
+    # la base guarda contraseñas y tokens: sólo legible por el dueño (también -wal/-shm)
+    os.umask(0o077)
+    d = os.path.dirname(DB_PATH) or "."
+    os.makedirs(d, exist_ok=True)
     with _lock, conn() as c:
         c.execute("PRAGMA journal_mode=WAL")
         c.executescript("""
@@ -89,6 +92,11 @@ def init() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, title TEXT, text TEXT, results TEXT
         );
         """)
+    for f in (d, DB_PATH, DB_PATH + "-wal", DB_PATH + "-shm"):
+        try:
+            os.chmod(f, 0o700 if f == d else 0o600)
+        except OSError:
+            pass
 
 
 def _merge(base: dict, over: dict) -> dict:

@@ -18,7 +18,7 @@ HOST_PROC = os.environ.get("HOST_PROC", "/proc/1")
 
 def run(cmd: list[str], timeout: int = 120) -> tuple[int, str, str]:
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subprocess.run(cmd, capture_output=True, text=True, errors="replace", timeout=timeout)
         return p.returncode, p.stdout, p.stderr
     except FileNotFoundError:
         return 127, "", f"{cmd[0]} no está instalado"
@@ -409,9 +409,13 @@ def collect_zfs() -> list[dict]:
         return [{"name": "?", "error": (err or out).strip()[:300]}]
     pools = {}
     for line in out.strip().splitlines():
-        n, size, alloc, free, frag, cap, health = line.split("\t")
-        pools[n] = {"name": n, "size": int(size), "alloc": int(alloc), "free": int(free),
-                    "frag": None if frag == "-" else int(frag), "cap": int(cap), "health": health,
+        cols = line.split("\t")
+        if len(cols) != 7:
+            continue
+        n, size, alloc, free, frag, cap, health = cols
+        num = lambda v: int(v) if v.isdigit() else None     # un pool UNAVAIL/FAULTED muestra "-"
+        pools[n] = {"name": n, "size": num(size) or 0, "alloc": num(alloc) or 0, "free": num(free) or 0,
+                    "frag": num(frag), "cap": num(cap) or 0, "health": health,
                     "vdevs": [], "scan": "", "status": "", "errors": "", "members": []}
     rc, out, err = zpool("status", "-P", "-p")
     cur, section, in_config = None, None, False
@@ -518,7 +522,8 @@ def _unescape(s: str) -> str:
 
 def collect_fs(ignored: list[str]) -> list[dict]:
     try:
-        with open(f"{HOST_PROC}/mounts") as f:
+        # errors="replace": un punto de montaje con bytes no UTF-8 no debe tumbar la revisión completa
+        with open(f"{HOST_PROC}/mounts", encoding="utf-8", errors="replace") as f:
             lines = f.read().splitlines()
     except OSError as e:
         log.warning("no se pueden leer los montajes del host: %s", e)

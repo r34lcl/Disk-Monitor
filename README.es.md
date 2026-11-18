@@ -2,7 +2,7 @@
 
 [English](README.md) · **Español**
 
-Versión 1.2.2 · [KqK.cl](https://kqk.cl)
+Versión 1.2.3 · [KqK.cl](https://kqk.cl)
 
 Panel web autoalojado que vigila los **discos físicos** de un servidor Linux y avisa cuando algo anda mal.
 
@@ -137,7 +137,7 @@ chmod 600 .env
 | `APP_USER` / `APP_PASSWORD` | Acceso a la web. `APP_PASSWORD` es obligatoria: si queda vacía, la web no abre y muestra cómo configurarla. Para usarlo sin contraseña (sólo en una red de confianza) agrega `AUTH_DISABLED=1`. |
 | `HOST_PORT` | Puerto del host donde se publica la web. |
 | `APP_LANG` | Idioma inicial de la web y los avisos: `es` (por defecto) o `en`. Sólo se usa en la primera instalación; después se cambia desde la web. |
-| `TRUSTED_PROXIES` | Redes de proxies cuyo `X-Forwarded-For`/`X-Forwarded-Proto` se acepta (para la IP real del cliente y la cookie segura). Por defecto loopback y redes privadas (`127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7`). Si el proxy está en otra red, agrégala. |
+| `TRUSTED_PROXIES` | IPs o redes de tu proxy inverso, separadas por comas. Sólo a ellas se les acepta `X-Forwarded-For`/`X-Forwarded-Proto` (IP real del cliente para el límite de intentos y cookie segura). Por defecto sólo loopback (`127.0.0.1/32,::1/128`). Si tu proxy entra desde otra IP (p. ej. otro equipo o la red de Docker), ponla aquí; no pongas redes enteras con clientes. |
 | `COOKIE_SECURE` | `auto` (por defecto: segura si llega por HTTPS o el proxy confiable dice `https`), `1` siempre segura, `0` nunca. |
 | `TZ` | Zona horaria de las tareas programadas y las fechas ([lista](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)). Por defecto `UTC`. |
 
@@ -366,7 +366,7 @@ Cambia `HOST_PORT` en el `.env` y ejecuta `docker compose up -d`.
 
 - El contenedor es **privilegiado** (tiene acceso total al hardware del host). Trata la web como un panel de administración: contraseña fuerte y sin exponerla directamente a internet. Usa un proxy inverso con HTTPS, una VPN o publica el puerto sólo en la red interna.
 - El login bloquea por 15 minutos una IP tras 10 intentos fallidos.
-- Las contraseñas de Telegram y SMTP se guardan en `data/disk-monitor.db` y la web nunca las muestra (aparecen enmascaradas). Protege esa carpeta y el `.env` (`chmod 600 .env`).
+- Las contraseñas de Telegram y SMTP se guardan en `data/disk-monitor.db` y la web nunca las muestra (aparecen enmascaradas). La aplicación deja `data/` y la base sólo legibles por su dueño (700/600) y `install.sh` crea el `.env` con permisos 600; no los abras a otros usuarios.
 - La exportación de configuración **incluye** los secretos, salvo que uses "Exportar sin contraseñas" (que quita contraseña SMTP, token de Telegram y URLs de Apprise).
 
 ---
@@ -402,7 +402,7 @@ Cambia `HOST_PORT` en el `.env` y ejecuta `docker compose up -d`.
 
 | Método | Ruta | Uso |
 |---|---|---|
-| GET | `/health` | Sin autenticación. Devuelve `{"ok": true, "version": "1.2.2", "last_check": <epoch>, "language": "es"}` |
+| GET | `/health` | Sin autenticación. Devuelve `{"ok": true, "version": "1.2.3", "last_check": <epoch>, "language": "es"}` |
 | GET | `/api/status` | Estado completo: discos, pools, sistemas de archivos y alertas activas |
 | GET | `/api/inventory` | Inventario de discos (presentes y ausentes) |
 | POST | `/api/check` | Lanzar una revisión |

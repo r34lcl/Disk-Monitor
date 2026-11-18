@@ -289,4 +289,13 @@ EN = {
     "Próximo: {when}.": "Next: {when}.",
     "scrub terminado con {n} errores": "scrub finished with {n} errors",
     "scrub terminado sin errores": "scrub finished with no errors",
+    "cada tarea necesita un id único (letras, números, . _ -)": "every task needs a unique id (letters, digits, . _ -)",
+    "{task}: destinos inválidos": "{task}: invalid targets",
+    "lista de tareas inválida": "invalid task list",
+    "falta la tarea de revisión de discos": "the disk check task is missing",
+    "petición rechazada: origen no permitido": "request rejected: origin not allowed",
+    "archivo inválido: {e}": "invalid file: {e}",
+    "{k}: debe ser un objeto": "{k}: must be an object",
+    "{k}: valor inválido": "{k}: invalid value",
+    "{k}: debe estar entre {lo} y {hi}": "{k}: must be between {lo} and {hi}",
 }

@@ -2,7 +2,7 @@
 
 **English** · [Español](README.es.md)
 
-Version 1.2.1 · [KqK.cl](https://kqk.cl)
+Version 1.2.2 · [KqK.cl](https://kqk.cl)
 
 Self-hosted web dashboard that watches the **physical disks** of a Linux server and notifies you when something goes wrong.
 
@@ -138,6 +138,8 @@ chmod 600 .env
 | `APP_USER` / `APP_PASSWORD` | Web UI login. `APP_PASSWORD` is required: if it's empty, the web UI won't open and shows how to set it. To run without a password (only on a trusted network) add `AUTH_DISABLED=1`. |
 | `HOST_PORT` | Host port where the web UI is published. |
 | `APP_LANG` | Initial language of the web UI and notifications: `es` (default) or `en`. Only used on first install; afterwards change it from the web UI. |
+| `TRUSTED_PROXIES` | Proxy networks whose `X-Forwarded-For`/`X-Forwarded-Proto` is trusted (for the real client IP and the secure cookie). Defaults to loopback and private networks (`127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7`). Add yours if the proxy is elsewhere. |
+| `COOKIE_SECURE` | `auto` (default: secure when the request is HTTPS or a trusted proxy says `https`), `1` always secure, `0` never. |
 | `TZ` | Time zone for scheduled tasks and dates ([list](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)). Defaults to `UTC`. |
 
 Generate a password with: `head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 18`
@@ -290,7 +292,7 @@ The app speaks HTTP on the configured port. For HTTPS and a domain, put a revers
   }
   ```
 
-With `X-Forwarded-Proto: https` the session cookie is marked secure. Then set the public URL in Settings → General so notifications include the link.
+With `X-Forwarded-Proto: https` from a trusted proxy (see `TRUSTED_PROXIES`) the session cookie is marked secure. Then set the public URL in Settings → General so notifications include the link.
 
 If you'll only use it behind the proxy, you can publish the port on localhost only by changing the `ports` line in `docker-compose.yml` to `"127.0.0.1:${HOST_PORT:-8093}:8000"`.
 
@@ -305,7 +307,7 @@ Clone the repository on each server following [section 2](#2-quick-install). Eac
 1. On the source server: Settings → General → **Export settings**. Use **Export without passwords** if the file will be passed around.
 2. On the new one: Settings → General → **Import…**
 
-The server name, URL and ignored disks are not copied, since they belong to each machine. If you import an export without passwords, the destination keeps the ones it already has.
+The server name, URL and ignored disks are not copied, since they belong to each machine. If you import an export without passwords, the destination keeps the ones it already has (Apprise URLs too), unless the file changes the mail server or the Telegram chats: then the password or token must be entered again. The file is validated before it is applied.
 
 Give each one a different **server name** (Settings → General) to tell where each notification comes from; the hostname is used by default.
 
@@ -366,7 +368,7 @@ Change `HOST_PORT` in `.env` and run `docker compose up -d`.
 - The container is **privileged** (full access to the host hardware). Treat the web UI as an admin panel: strong password and no direct exposure to the internet. Use a reverse proxy with HTTPS, a VPN, or publish the port on the internal network only.
 - Login blocks an IP for 15 minutes after 10 failed attempts.
 - Telegram and SMTP passwords are stored in `data/disk-monitor.db` and the web UI never shows them (they appear masked). Protect that folder and `.env` (`chmod 600 .env`).
-- The settings export **includes** secrets, unless you use "Export without passwords".
+- The settings export **includes** secrets, unless you use "Export without passwords" (which removes the SMTP password, Telegram token and Apprise URLs).
 
 ---
 
@@ -401,7 +403,7 @@ Change `HOST_PORT` in `.env` and run `docker compose up -d`.
 
 | Method | Path | Use |
 |---|---|---|
-| GET | `/health` | No authentication. Returns `{"ok": true, "version": "1.2.1", "last_check": <epoch>, "language": "en"}` |
+| GET | `/health` | No authentication. Returns `{"ok": true, "version": "1.2.2", "last_check": <epoch>, "language": "en"}` |
 | GET | `/api/status` | Full status: disks, pools, file systems and active alerts |
 | GET | `/api/inventory` | Disk inventory (present and missing) |
 | POST | `/api/check` | Run a check |

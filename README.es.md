@@ -2,7 +2,7 @@
 
 [English](README.md) · **Español**
 
-Versión 1.2.1 · [KqK.cl](https://kqk.cl)
+Versión 1.2.2 · [KqK.cl](https://kqk.cl)
 
 Panel web autoalojado que vigila los **discos físicos** de un servidor Linux y avisa cuando algo anda mal.
 
@@ -137,6 +137,8 @@ chmod 600 .env
 | `APP_USER` / `APP_PASSWORD` | Acceso a la web. `APP_PASSWORD` es obligatoria: si queda vacía, la web no abre y muestra cómo configurarla. Para usarlo sin contraseña (sólo en una red de confianza) agrega `AUTH_DISABLED=1`. |
 | `HOST_PORT` | Puerto del host donde se publica la web. |
 | `APP_LANG` | Idioma inicial de la web y los avisos: `es` (por defecto) o `en`. Sólo se usa en la primera instalación; después se cambia desde la web. |
+| `TRUSTED_PROXIES` | Redes de proxies cuyo `X-Forwarded-For`/`X-Forwarded-Proto` se acepta (para la IP real del cliente y la cookie segura). Por defecto loopback y redes privadas (`127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7`). Si el proxy está en otra red, agrégala. |
+| `COOKIE_SECURE` | `auto` (por defecto: segura si llega por HTTPS o el proxy confiable dice `https`), `1` siempre segura, `0` nunca. |
 | `TZ` | Zona horaria de las tareas programadas y las fechas ([lista](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)). Por defecto `UTC`. |
 
 Genera una contraseña con: `head -c 32 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 18`
@@ -289,7 +291,7 @@ La aplicación habla HTTP en el puerto configurado. Para usar HTTPS y un dominio
   }
   ```
 
-Con `X-Forwarded-Proto: https` la cookie de sesión se marca como segura. Después pon la URL pública en Configuración → General para que los avisos incluyan el enlace.
+Con `X-Forwarded-Proto: https` desde un proxy confiable (ver `TRUSTED_PROXIES`) la cookie de sesión se marca como segura. Después pon la URL pública en Configuración → General para que los avisos incluyan el enlace.
 
 Si sólo lo usarás detrás del proxy, puedes publicar el puerto únicamente en localhost cambiando en `docker-compose.yml` la línea de `ports` por `"127.0.0.1:${HOST_PORT:-8093}:8000"`.
 
@@ -304,7 +306,7 @@ Clona el repositorio en cada servidor siguiendo la [sección 2](#2-instalación-
 1. En el servidor de origen: Configuración → General → **Exportar configuración**. Usa **Exportar sin contraseñas** si el archivo va a circular.
 2. En el nuevo: Configuración → General → **Importar…**
 
-No se copian el nombre del servidor, la URL ni los discos ignorados, porque son propios de cada equipo. Si importas una exportación sin contraseñas, se conservan las que ya tenga el destino.
+No se copian el nombre del servidor, la URL ni los discos ignorados, porque son propios de cada equipo. Si importas una exportación sin contraseñas, se conservan las que ya tenga el destino (también las URLs de Apprise), salvo que el archivo cambie el servidor de correo o los chats de Telegram: en ese caso hay que volver a escribir la contraseña o el token. El archivo se valida antes de aplicarse.
 
 Pon un **nombre de servidor** distinto en cada uno (Configuración → General) para distinguir de dónde viene cada aviso; por defecto se usa el hostname.
 
@@ -365,7 +367,7 @@ Cambia `HOST_PORT` en el `.env` y ejecuta `docker compose up -d`.
 - El contenedor es **privilegiado** (tiene acceso total al hardware del host). Trata la web como un panel de administración: contraseña fuerte y sin exponerla directamente a internet. Usa un proxy inverso con HTTPS, una VPN o publica el puerto sólo en la red interna.
 - El login bloquea por 15 minutos una IP tras 10 intentos fallidos.
 - Las contraseñas de Telegram y SMTP se guardan en `data/disk-monitor.db` y la web nunca las muestra (aparecen enmascaradas). Protege esa carpeta y el `.env` (`chmod 600 .env`).
-- La exportación de configuración **incluye** los secretos, salvo que uses "Exportar sin contraseñas".
+- La exportación de configuración **incluye** los secretos, salvo que uses "Exportar sin contraseñas" (que quita contraseña SMTP, token de Telegram y URLs de Apprise).
 
 ---
 
@@ -400,7 +402,7 @@ Cambia `HOST_PORT` en el `.env` y ejecuta `docker compose up -d`.
 
 | Método | Ruta | Uso |
 |---|---|---|
-| GET | `/health` | Sin autenticación. Devuelve `{"ok": true, "version": "1.2.1", "last_check": <epoch>, "language": "es"}` |
+| GET | `/health` | Sin autenticación. Devuelve `{"ok": true, "version": "1.2.2", "last_check": <epoch>, "language": "es"}` |
 | GET | `/api/status` | Estado completo: discos, pools, sistemas de archivos y alertas activas |
 | GET | `/api/inventory` | Inventario de discos (presentes y ausentes) |
 | POST | `/api/check` | Lanzar una revisión |

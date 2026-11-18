@@ -4,11 +4,13 @@ import asyncio
 import base64
 import hashlib
 import hmac
+import ipaddress
 import logging
 import os
 import secrets
 import time
 from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
@@ -30,6 +32,16 @@ NO_PASSWORD_MSG = {"es": ("Falta APP_PASSWORD en el archivo .env. Define una con
                    "en": ("APP_PASSWORD is missing in the .env file. Set a password and apply it with "
                           "'docker compose up -d' (or AUTH_DISABLED=1 to run without a password, not recommended).")}
 SECRET_FIELDS = {("telegram", "bot_token"), ("email", "password")}
+# lo que "exportar sin contraseñas" quita y la importación conserva: las URLs de Apprise llevan tokens
+EXPORT_SECRETS = SECRET_FIELDS | {("apprise", "urls")}
+# al importar, un secreto guardado sólo se conserva si su destino no cambió
+SECRET_BINDINGS = {"email": ("host", "port", "username", "security"), "telegram": ("chat_ids",)}
+# proxies cuyo X-Forwarded-For / X-Forwarded-Proto se acepta (por defecto: loopback y redes privadas)
+TRUSTED_PROXIES = [ipaddress.ip_network(n.strip(), strict=False) for n in os.environ.get(
+    "TRUSTED_PROXIES", "127.0.0.0/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7").split(",") if n.strip()]
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "auto").lower()   # auto | 1 | 0
+MAX_FAIL_KEYS = 5000
+FAIL_WINDOW, FAIL_MAX = 900, 10
 MASK = "••••••••"
 
 
@@ -74,15 +86,87 @@ def _valid_session(token: str | None) -> bool:
     return hmac.compare_digest(sig, good) and int(exp) > time.time() and user == APP_USER
 
 
-def _basic_ok(request: Request) -> bool:
+def _trusted(ip: str) -> bool:
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(a in n for n in TRUSTED_PROXIES)
+
+
+def _client_ip(request: Request) -> str:
+    """IP real del cliente: la del socket, o el último salto no confiable de X-Forwarded-For
+    cuando la conexión viene de un proxy confiable (el cliente no puede elegirla)."""
+    peer = request.client.host if request.client else "?"
+    if _trusted(peer):
+        for hop in reversed([h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]):
+            if not _trusted(hop):
+                return hop[:64]
+    return peer
+
+
+def _is_https(request: Request) -> bool:
+    if COOKIE_SECURE in ("1", "true", "yes"):
+        return True
+    if COOKIE_SECURE in ("0", "false", "no"):
+        return False
+    peer = request.client.host if request.client else ""
+    return request.url.scheme == "https" or (_trusted(peer) and request.headers.get("x-forwarded-proto") == "https")
+
+
+def _creds_ok(user: str, pw: str) -> bool:
+    return (hmac.compare_digest(user.encode(), APP_USER.encode())
+            & hmac.compare_digest(pw.encode(), APP_PASSWORD.encode()))
+
+
+def _locked(ip: str, now: float) -> bool:
+    return len([t for t in _fails.get(ip, []) if now - t < FAIL_WINDOW]) >= FAIL_MAX
+
+
+def _record_fail(ip: str, now: float) -> None:
+    if len(_fails) >= MAX_FAIL_KEYS or ip not in _fails:
+        for k in [k for k, v in _fails.items() if not v or now - v[-1] >= FAIL_WINDOW]:
+            del _fails[k]
+        while len(_fails) >= MAX_FAIL_KEYS:
+            del _fails[next(iter(_fails))]
+    _fails[ip] = [t for t in _fails.get(ip, []) if now - t < FAIL_WINDOW] + [now]
+
+
+def _basic_auth(request: Request) -> bool | None:
+    """True/False si trae Basic Auth (comparte el límite de intentos del login); None si no la trae."""
     h = request.headers.get("authorization", "")
     if not h.lower().startswith("basic "):
+        return None
+    ip, now = _client_ip(request), time.time()
+    if _locked(ip, now):
         return False
     try:
         u, p = base64.b64decode(h[6:]).decode().split(":", 1)
     except Exception:  # noqa: BLE001
+        u, p = "", ""
+    if _creds_ok(u, p):
+        return True
+    _record_fail(ip, now)
+    log.warning("Basic Auth fallida desde %s", ip)
+    return False
+
+
+def _cross_site(request: Request) -> bool:
+    """Peticiones que cambian algo deben venir de la propia página (defensa CSRF)."""
+    if request.method in ("GET", "HEAD", "OPTIONS"):
         return False
-    return secrets.compare_digest(u, APP_USER) and secrets.compare_digest(p, APP_PASSWORD)
+    sfs = request.headers.get("sec-fetch-site")
+    if sfs:                      # navegadores actuales: fiable y no depende del proxy
+        return sfs in ("cross-site", "same-site")
+    origin = request.headers.get("origin")
+    if origin:
+        host = request.headers.get("x-forwarded-host") if _trusted(request.client.host if request.client else "") else None
+        return urlsplit(origin).netloc.lower() != (host or request.headers.get("host", "")).lower()
+    return False
+
+
+SEC_HEADERS = {"X-Frame-Options": "DENY", "Content-Security-Policy": "frame-ancestors 'none'",
+               "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin"}
 
 
 @app.middleware("http")
@@ -96,9 +180,14 @@ async def auth(request: Request, call_next):
         return HTMLResponse(f"<!doctype html><meta charset=utf-8><title>Disk Monitor</title>"
                             f"<p style='font:16px system-ui;max-width:560px;margin:15vh auto;padding:16px'>"
                             f"<b>{_('Disk Monitor no está configurado.')}</b><br><br>{NO_PASSWORD_MSG[lang]}</p>", status_code=503)
+    if _cross_site(request):
+        return JSONResponse({"detail": _("petición rechazada: origen no permitido")}, status_code=403)
     if (AUTH_DISABLED or path in PUBLIC_PATHS
-            or _valid_session(request.cookies.get(SESSION_COOKIE)) or _basic_ok(request)):
-        return await call_next(request)
+            or _valid_session(request.cookies.get(SESSION_COOKIE)) or _basic_auth(request)):
+        resp = await call_next(request)
+        for k, v in SEC_HEADERS.items():
+            resp.headers.setdefault(k, v)
+        return resp
     if path.startswith("/api/"):
         return JSONResponse({"detail": _("no autenticado")}, status_code=401)
     return RedirectResponse("/login", status_code=303)
@@ -113,14 +202,13 @@ async def login_page(request: Request):
 
 @app.post("/api/login")
 async def login(request: Request, body: dict):
-    ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0].strip()
+    ip = _client_ip(request)
     now = time.time()
-    recent = [t for t in _fails.get(ip, []) if now - t < 900]
-    if len(recent) >= 10:
+    if _locked(ip, now):
         raise HTTPException(429, _("demasiados intentos, espera unos minutos"))
     user, pw = str(body.get("username", "")), str(body.get("password", ""))
-    if not (secrets.compare_digest(user, APP_USER) and secrets.compare_digest(pw, APP_PASSWORD)):
-        _fails[ip] = recent + [now]
+    if not _creds_ok(user, pw):
+        _record_fail(ip, now)
         log.warning("login fallido desde %s (usuario %r)", ip, user[:40])
         await asyncio.sleep(1)
         raise HTTPException(401, _("usuario o contraseña incorrectos"))
@@ -128,7 +216,7 @@ async def login(request: Request, body: dict):
     max_age = 30 * 86400 if body.get("remember") else 12 * 3600
     resp = JSONResponse({"ok": True})
     resp.set_cookie(SESSION_COOKIE, _sign(user, int(now + max_age)), max_age=max_age if body.get("remember") else None,
-                    httponly=True, samesite="lax", secure=request.headers.get("x-forwarded-proto") == "https")
+                    httponly=True, samesite="lax", secure=_is_https(request))
     return resp
 
 
@@ -297,7 +385,7 @@ async def api_forget(key: str):
 def _masked(s: dict) -> dict:
     s = {k: (dict(v) if isinstance(v, dict) else v) for k, v in s.items()}
     for sec, f in SECRET_FIELDS:
-        if s[sec].get(f):
+        if isinstance(s.get(sec), dict) and s[sec].get(f):
             s[sec][f] = MASK
     return s
 
@@ -320,6 +408,10 @@ async def put_settings(body: dict):
             raise HTTPException(400, str(e))
     if "language" in body and body["language"] not in ("es", "en"):
         raise HTTPException(400, _("idioma inválido"))
+    try:
+        db.validate_settings(body)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     s = db.save_settings(body)
     set_lang(s.get("language"))
     if body.get("language") and body["language"] != cur.get("language") and not worker.status["running"]:
@@ -339,7 +431,7 @@ async def export_settings(include_secrets: int = 1):
     for t in s.get("tasks") or []:
         t["targets"] = []          # discos y pools son propios de cada servidor
     if not include_secrets:
-        for sec, f in SECRET_FIELDS:
+        for sec, f in EXPORT_SECRETS:
             s[sec][f] = ""
     return JSONResponse({"disk_monitor_settings": 1, "settings": s},
                         headers={"Content-Disposition": 'attachment; filename="disk-monitor-config.json"'})
@@ -360,9 +452,16 @@ async def import_settings(body: dict):
             worker.validate_tasks(s["tasks"])
         except ValueError as e:
             raise HTTPException(400, _("tareas inválidas: {e}", e=e))
-    for sec, f in SECRET_FIELDS:   # si la exportación venía sin secretos, conservar los actuales
+    try:
+        db.validate_settings(s)
+    except ValueError as e:
+        raise HTTPException(400, _("archivo inválido: {e}", e=e))
+    for sec, f in EXPORT_SECRETS:
+        # si la exportación venía sin secretos, conservar los actuales, pero sólo si el destino
+        # (servidor SMTP, chats de Telegram) es el mismo: un archivo ajeno no puede llevarse la clave a otro lado
         if isinstance(s.get(sec), dict) and not s[sec].get(f):
-            s[sec][f] = cur[sec].get(f, "")
+            same = all(s[sec].get(k, cur[sec].get(k)) == cur[sec].get(k) for k in SECRET_BINDINGS.get(sec, ()))
+            s[sec][f] = cur[sec].get(f, "") if same else ""
     db.save_settings(s)
     worker.wake.set()
     return {"settings": _masked(db.get_settings())}
@@ -419,6 +518,9 @@ async def api_scrub(pool: str, body: dict):
         if not r["ok"]:
             raise HTTPException(409, r["msg"])
         return {"ok": True, "msg": r["msg"]}
+    known = {p["name"] for p in await asyncio.to_thread(collector.collect_zfs) if "health" in p}
+    if pool not in known:
+        raise HTTPException(404, _("pool no encontrado"))
     ok, msg = await asyncio.to_thread(collector.scrub, pool, action)
     if not ok:
         raise HTTPException(409, msg)

@@ -133,6 +133,45 @@ def get_settings() -> dict:
     return _merge(json.loads(json.dumps(DEFAULT_SETTINGS)), {k: v for k, v in rows.items() if k in DEFAULT_SETTINGS})
 
 
+_BOUNDS = {"retention_days": (1, 3650), "discovery_minutes": (0, 1440), "alerts.reminder_hours": (0, 8760),
+           "email.port": (0, 65535)}
+_CHOICES = {"alerts.min_severity": ("warning", "critical"), "email.security": ("starttls", "ssl", "none")}
+
+
+def validate_settings(new: dict, base: dict | None = None, path: str = "") -> None:
+    """Comprueba tipos (según DEFAULT_SETTINGS) y rangos ANTES de guardar; lanza ValueError.
+    Las tareas e idioma se validan aparte."""
+    from .i18n import _
+    base = DEFAULT_SETTINGS if base is None else base
+    if not isinstance(new, dict):
+        raise ValueError(_("{k}: debe ser un objeto", k=path.rstrip(".") or "settings"))
+    for k, v in new.items():
+        if k not in base or (not path and k in ("tasks", "language")):
+            continue
+        d, key = base[k], path + k
+        bad = ValueError(_("{k}: valor inválido", k=key))
+        if isinstance(d, dict):
+            validate_settings(v, d, key + ".")
+            continue
+        if isinstance(d, bool):
+            if not isinstance(v, bool):
+                raise bad
+        elif isinstance(d, (int, float)):
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v:
+                raise bad
+            lo, hi = _BOUNDS.get(key, (0, 1_000_000))
+            if not lo <= v <= hi:
+                raise ValueError(_("{k}: debe estar entre {lo} y {hi}", k=key, lo=lo, hi=hi))
+        elif isinstance(d, str):
+            if not isinstance(v, str) or len(v) > 20000:
+                raise bad
+            if key in _CHOICES and v not in _CHOICES[key]:
+                raise bad
+        elif isinstance(d, list):
+            if not isinstance(v, list) or len(v) > 1000 or not all(isinstance(x, str) and len(x) <= 500 for x in v):
+                raise bad
+
+
 def save_settings(new: dict) -> dict:
     merged = _merge(get_settings(), {k: v for k, v in new.items() if k in DEFAULT_SETTINGS})
     with _lock, conn() as c:

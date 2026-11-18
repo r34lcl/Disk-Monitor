@@ -169,6 +169,8 @@ legend{font-weight:650;padding:0 6px}
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// literal JS seguro dentro de un atributo on*="…": JSON (contexto JS) y luego esc (contexto HTML)
+const jsq=s=>esc(JSON.stringify(String(s??"")));
 let ST=null,CFG=null,TK=null,EDIT=null,VIEW="panel";
 async function api(path,opt={}){
   const r=await fetch(path,{headers:{"Content-Type":"application/json"},...opt,body:opt.body?JSON.stringify(opt.body):undefined});
@@ -264,7 +266,7 @@ async function loadPanel(){
     <button class="btn primary" id="runbtn" ${ST.running?"disabled":""} onclick="runNow()">${ST.running?_t("Revisando…"):_t("Revisar ahora")}</button></div>
     ${stale?`<div class="stale" role="status">${icon("warning")}<span><b>${_t("Datos desactualizados:")}</b> ${_t('la revisión programada no se ejecutó (debía correr {a}; la última fue {b}). Revisa los logs del contenedor o pulsa "Revisar ahora".',{a:ago(nxt),b:ago(ST.ts)})}</span></div>`:""}`;
   if(al.length){h+=`<h2>${_t("Problemas activos")} <span class="muted" style="font-weight:400">(${al.length})</span></h2>`+al.map(alertRow).join("")}
-  if(ST.missing&&ST.missing.length){h+=`<h2>${_t("Discos ausentes")}</h2>`+ST.missing.map(m=>`<div class="alert">${icon("critical")}<div class="txt"><div>${esc(m.model)} (${esc(m.serial||m.key)})</div><div class="muted">${_t("Último visto como {dev} {ago}",{dev:esc(m.dev),ago:ago(m.last_seen)})}</div></div><button class="btn sm" onclick="forget('${esc(m.key)}')">${_t("Olvidar disco")}</button></div>`).join("")}
+  if(ST.missing&&ST.missing.length){h+=`<h2>${_t("Discos ausentes")}</h2>`+ST.missing.map(m=>`<div class="alert">${icon("critical")}<div class="txt"><div>${esc(m.model)} (${esc(m.serial||m.key)})</div><div class="muted">${_t("Último visto como {dev} {ago}",{dev:esc(m.dev),ago:ago(m.last_seen)})}</div></div><button class="btn sm" onclick="forget(${jsq(m.key)})">${_t("Olvidar disco")}</button></div>`).join("")}
   h+=`<h2>${_t("Discos físicos")} <span class="muted" style="font-weight:400">(${ST.disks.length})</span></h2><div class="grid">${ST.disks.map(diskCard).join("")||`<div class="empty">${_t("No se detectaron discos")}</div>`}</div>`;
   if(ST.pools&&ST.pools.length)h+=`<h2>${_t("Pools ZFS")}</h2><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">${ST.pools.map(poolCard).join("")}</div>`;
   const fs=(ST.fs||[]);
@@ -299,7 +301,7 @@ function diskCard(d){
   const stTxt=st.running?`<span class="prog">${_t("Prueba en curso")}${st.remaining!=null?_t(" · falta {n}%",{n:st.remaining}):""}</span>`
     :last?`${_t("Última prueba:")} ${esc(last.type||"")} ${last.passed?"✓":"✕"} <span class="muted">(${last.hours!=null&&d.power_on_hours?ago(Date.now()/1000-(d.power_on_hours-last.hours)*3600):"?"})</span>`:`<span class="muted">${_t("Sin pruebas SMART registradas")}</span>`;
   const tempCls=d.temp==null?"":"";
-  return`<div class="card disk h-${lvl}" role="button" tabindex="0" aria-label="${_t("Ver detalle de")} ${esc(d.name)}, ${esc(d.model)}: ${esc(_t(SEVL[lvl]||lvl))}" onclick="openDisk('${esc(d.key)}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDisk('${esc(d.key)}')}">
+  return`<div class="card disk h-${lvl}" role="button" tabindex="0" aria-label="${_t("Ver detalle de")} ${esc(d.name)}, ${esc(d.model)}: ${esc(_t(SEVL[lvl]||lvl))}" onclick="openDisk(${jsq(d.key)})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openDisk(${jsq(d.key)})}">
   <div class="dhead"><div style="min-width:0"><div class="dname">${esc(d.name)} <span class="muted" style="font-weight:400;font-size:12px">${esc(d.dev)}</span></div>
   <div class="dmodel">${esc(d.model)}${d.serial&&!/^0+$/.test(d.serial)?" · "+esc(d.serial):""}</div></div>
   <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">${d.state==="standby"&&!d.stale_since&&d.temp==null?"":pill(lvl)}${d.state==="standby"?pill("standby"):""}</div></div>
@@ -315,9 +317,9 @@ function poolCard(p){
   const active=sc.in_progress||sc.paused,what=sc.kind==="resilver"?"Resilver":"Scrub";
   const scrubBox=active?`<div class="scrub"><div class="grow"><b>${what} ${sc.paused?_t("en pausa"):_t("en curso")}</b>${sc.progress!=null?` · ${sc.progress.toFixed(1)}%`:""}${sc.eta?_t(" · faltan {d}",{d:durH(sc.eta)}):""}${sc.started?` <span class="muted">· ${_t("desde")} ${fmtT(sc.started)}</span>`:""}
       <div class="meter" role="progressbar" aria-label="${_t("Avance del {w}",{w:what.toLowerCase()})}" aria-valuenow="${sc.progress||0}" aria-valuemin="0" aria-valuemax="100"><i style="width:${sc.progress||0}%"></i></div></div>
-      ${sc.kind==="scrub"?`<button class="btn sm" onclick="scrubAct('${esc(p.name)}','${sc.paused?"start":"pause"}')">${sc.paused?_t("Reanudar"):_t("Pausar")}</button><button class="btn sm" onclick="scrubAct('${esc(p.name)}','stop')">${_t("Detener")}</button>`:""}</div>`
+      ${sc.kind==="scrub"?`<button class="btn sm" onclick="scrubAct(${jsq(p.name)},'${sc.paused?"start":"pause"}')">${sc.paused?_t("Reanudar"):_t("Pausar")}</button><button class="btn sm" onclick="scrubAct(${jsq(p.name)},'stop')">${_t("Detener")}</button>`:""}</div>`
     :`<div class="scrub"><div class="grow t2">${sc.kind==="scrub"&&sc.date?`${_t("Último scrub")} <b title="${fmtT(sc.date)}">${ago(sc.date)}</b> · ${sc.errors?`<b style="color:var(--warn-ink)">${_t("{n} errores",{n:sc.errors})}</b>`:_t("sin errores")}${sc.duration?_t(" · duró {d}",{d:durH(sc.duration)}):""}`:sc.canceled?_t("El último scrub se canceló"):_t("Sin scrub registrado")}${nextScrub(p.name)?` · ${_t("próximo")} <b>${nextScrub(p.name)}</b>`:""}</div>
-      <button class="btn sm" onclick="scrubAct('${esc(p.name)}','start')" ${p.health!=="ONLINE"?`disabled title="${_t("El pool no está sano")}"`:""}>${_t("Iniciar scrub")}</button></div>`;
+      <button class="btn sm" onclick="scrubAct(${jsq(p.name)},'start')" ${p.health!=="ONLINE"?`disabled title="${_t("El pool no está sano")}"`:""}>${_t("Iniciar scrub")}</button></div>`;
   const name=n=>n.startsWith("/dev/")?n.replace(/^\/dev\/disk\/by-[^/]+\//,"").replace(/^\/dev\//,""):n;
   const disk=v=>{const d=v.disk&&ST.disks.find(x=>x.dev===v.disk);return d?` <span class="muted">→ ${esc(d.name)}</span>`:""};
   return`<div class="card"><div class="dhead"><div><div class="dname">${esc(p.name)}</div><div class="dmodel">${_t("{a} de {b}",{a:fmtB(p.alloc),b:fmtB(p.size)})} · frag ${p.frag??"—"}%</div></div><div style="display:flex;gap:5px">${pill(p.health==="ONLINE"?"ok":"critical",p.health)}${lv!=="ok"?pill(lv):""}</div></div>
@@ -347,7 +349,7 @@ async function discover(){const b=$("#discbtn");b.disabled=true;b.textContent=_t
   $("#dlg-b").innerHTML=note+`<div class="card tw"><table><thead><tr><th>${_t("Disco")}</th><th>${_t("Modelo")}</th><th>${_t("Serie")}</th><th>${_t("Estado")}</th><th>${_t("Visto")}</th><th></th></tr></thead><tbody>
   ${inv.map(x=>`<tr><td><b>${esc(x.name||"—")}</b> <span class="muted">${esc(x.dev||"")}</span></td><td>${esc(x.model)}</td><td class="vdev">${esc(x.serial||"")}</td>
    <td>${x.present?pill(x.state==="nosmart"?"nosmart":x.state==="standby"?"standby":"ok",_t(x.state==="nosmart"?"Sin SMART":x.state==="standby"?"En reposo":"Presente")):pill("missing",_t("Ausente"))}</td>
-   <td>${x.present?_t("ahora"):ago(x.last_seen)}</td><td>${x.present?"":`<button class="btn sm" onclick="forget('${esc(x.key)}').then(discover)">${_t("Olvidar")}</button>`}</td></tr>`).join("")}</tbody></table></div>
+   <td>${x.present?_t("ahora"):ago(x.last_seen)}</td><td>${x.present?"":`<button class="btn sm" onclick="forget(${jsq(x.key)}).then(discover)">${_t("Olvidar")}</button>`}</td></tr>`).join("")}</tbody></table></div>
   <p class="hint">${_t("La detección se hace al iniciar el contenedor, en cada revisión, con este botón y con un sondeo rápido cada {n} min que no despierta los discos (pestaña Tareas).",{n:CFG?.discovery_minutes||"N"})}</p>`;
   if(!dlg.open)dlg.showModal();}
 async function ack(id,v){await api(`/api/alerts/${id}/ack`,{method:"POST",body:{value:!!v}});VIEW==="alerts"?loadAlerts():loadPanel()}
@@ -369,11 +371,11 @@ async function openDisk(key,days){DK=key;DD=days||DD;
   const keyAttr=new Set([5,10,184,187,188,196,197,198,199,170,171,172,232]);
   $("#dlg-b").innerHTML=`<div class="info">${info.map(([a,b])=>`<div><span>${_t(a)}</span>${esc(b??"—")}</div>`).join("")}</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0">
-    <button class="btn" onclick="selftest('${esc(key)}','short')" ${st.running?"disabled":""}>${_t("Prueba corta")}${pm.short?` (~${pm.short} min)`:""}</button>
-    <button class="btn" onclick="selftest('${esc(key)}','long')" ${st.running?"disabled":""}>${_t("Prueba larga")}${pm.extended?` (~${pm.extended>=120?(pm.extended/60).toFixed(0)+" h":pm.extended+" min"})`:""}</button>
-    <button class="btn" onclick="toggleIgnore('${esc(key)}')">${ign?_t("Volver a vigilar"):_t("Ignorar alertas de este disco")}</button>
+    <button class="btn" onclick="selftest(${jsq(key)},'short')" ${st.running?"disabled":""}>${_t("Prueba corta")}${pm.short?` (~${pm.short} min)`:""}</button>
+    <button class="btn" onclick="selftest(${jsq(key)},'long')" ${st.running?"disabled":""}>${_t("Prueba larga")}${pm.extended?` (~${pm.extended>=120?(pm.extended/60).toFixed(0)+" h":pm.extended+" min"})`:""}</button>
+    <button class="btn" onclick="toggleIgnore(${jsq(key)})">${ign?_t("Volver a vigilar"):_t("Ignorar alertas de este disco")}</button>
     ${st.running?`<span class="prog" style="align-self:center">${_t("Prueba en curso")}${st.remaining!=null?_t(" · falta {n}%",{n:st.remaining}):""}</span>`:""}</div>
-  <h2>${_t("Temperatura")} <span class="seg" style="margin-left:auto">${[1,7,30,90].map(n=>`<button class="${n===DD?"on":""}" onclick="openDisk('${esc(key)}',${n})">${n===1?"24 h":n+" d"}</button>`).join("")}</span></h2>
+  <h2>${_t("Temperatura")} <span class="seg" style="margin-left:auto">${[1,7,30,90].map(n=>`<button class="${n===DD?"on":""}" onclick="openDisk(${jsq(key)},${n})">${n===1?"24 h":n+" d"}</button>`).join("")}</span></h2>
   <div class="card chart" id="tchart"></div>
   <h2>${_t("Atributos SMART")}</h2><div class="card tw"><table><thead><tr><th class="num">${_t("ID")}</th><th>${_t("Atributo")}</th><th class="num">${_t("Valor")}</th><th class="num">${_t("Peor")}</th><th class="num">${_t("Umbral")}</th><th>${_t("Tipo")}</th><th>${_t("Falló")}</th><th>${_t("Raw")}</th></tr></thead><tbody>
   ${(d.attributes||[]).map(a=>{const rawn=parseInt(a.raw);const hl=a.when_failed==="now"?"hl":(a.when_failed||(keyAttr.has(a.id)&&rawn>0&&a.id!==232))?"wl":"";
@@ -508,7 +510,7 @@ function taskCard(t,i){
       <div class="tmeta">${running?`<div class="prog">${_t("En ejecución…")}</div>`:L?`<div class="tlast ${L.ok?"":"bad"}"><span>${_t("Última")}</span> <b title="${fmtT(L.ts)}">${ago(L.ts)}</b>${L.trigger==="manual"?_t(" (manual)"):""} · ${L.ok?"✓":"✕"} ${esc(L.msg)}</div>`:`<div><span>${_t("Última")}</span> ${_t("nunca")}</div>`}</div>
       ${conflict?`<div class="tmeta" style="color:var(--warn-ink)">${icon("warning")} ${_t("Coincide en menos de 24 h con otra tarea pesada (scrub / prueba larga). Conviene separarlas.")}</div>`:""}
     </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap">${isNew||na?"":`<button class="btn sm" onclick="runTask('${esc(t.id)}')" ${running||TK.running_task?"disabled":""}>${_t("Ejecutar ahora")}</button>`}<button class="btn sm" onclick="editTask(${ed?"null":i})" aria-expanded="${ed}">${ed?_t("Cerrar"):_t("Editar")}</button></div></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${isNew||na?"":`<button class="btn sm" onclick="runTask(${jsq(t.id)})" ${running||TK.running_task?"disabled":""}>${_t("Ejecutar ahora")}</button>`}<button class="btn sm" onclick="editTask(${ed?"null":i})" aria-expanded="${ed}">${ed?_t("Cerrar"):_t("Editar")}</button></div></div>
     ${ed?taskEditor(t,i):""}</div>`}
 function tlabel(t){return _t(t.type==="smart"?(t.test==="long"?"Prueba SMART larga":"Prueba SMART corta"):({check:"Revisión de discos",scrub:"Scrub ZFS",report:"Resumen del estado"})[t.type])}
 function targetsTxt(t){if(t.type==="smart"){const n=(t.targets||[]).map(k=>(TK.disks.find(d=>d.key===k)||{}).name||"?");return`<div><span>${_t("Discos")}</span> <b>${n.length?esc(n.join(", ")):_t("todos")}</b></div>`}

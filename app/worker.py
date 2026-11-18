@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import logging
 import time
 
@@ -659,13 +660,22 @@ async def zfs_watch() -> None:
 
 # ---------------------------------------------------------------- tareas
 
+_TASK_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+
+
 def validate_tasks(tasks: list[dict]) -> None:
+    if not isinstance(tasks, list) or not all(isinstance(t, dict) for t in tasks):
+        raise ValueError(_("lista de tareas inválida"))
+    if not any(t.get("type") == "check" for t in tasks):
+        raise ValueError(_("falta la tarea de revisión de discos"))
     ids = set()
     for t in tasks:
         if t.get("type") not in TASK_TYPES:
             raise ValueError(_("tipo de tarea desconocido: {t}", t=t.get("type")))
-        if not t.get("id") or t["id"] in ids:
-            raise ValueError(_("cada tarea necesita un id único"))
+        if not isinstance(t.get("id"), str) or not _TASK_ID.match(t["id"]) or t["id"] in ids:
+            raise ValueError(_("cada tarea necesita un id único (letras, números, . _ -)"))
+        if not isinstance(t.get("targets", []), list) or not all(isinstance(x, str) for x in t.get("targets", [])):
+            raise ValueError(_("{task}: destinos inválidos", task=task_name(t)))
         ids.add(t["id"])
         if t["type"] == "smart" and t.get("test") not in ("short", "long"):
             raise ValueError(_("la prueba SMART debe ser corta o larga"))
@@ -675,6 +685,10 @@ def validate_tasks(tasks: list[dict]) -> None:
             raise ValueError(f"{task_name(t)}: {e}") from None
         if t["type"] in ("smart", "scrub") and sched.interval_seconds(t["when"]) and sched.interval_seconds(t["when"]) < 3600:
             raise ValueError(_("{task}: no tiene sentido repetirla más de una vez por hora", task=task_name(t)))
+        if t["type"] in ("smart", "scrub") and t["when"].get("freq") == "cron":
+            nx = sched.next_runs(t["when"], 4)
+            if any(b - a < 3600 for a, b in zip(nx, nx[1:])):
+                raise ValueError(_("{task}: no tiene sentido repetirla más de una vez por hora", task=task_name(t)))
 
 
 def has_zfs() -> bool:

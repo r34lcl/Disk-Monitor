@@ -18,6 +18,20 @@ Todo corre en un único contenedor Docker; el host no necesita tener instalado `
 
 ---
 
+## Capturas
+
+![Panel](docs/screenshots/es-dashboard.png)
+
+<table>
+<tr><td width="50%" align="center"><a href="docs/screenshots/es-disk-detail.png"><img src="docs/screenshots/es-disk-detail.png" alt="Detalle de un disco: historial de temperatura y atributos SMART"></a><br><sub>Detalle de un disco: historial de temperatura y atributos SMART</sub></td><td width="50%" align="center"><a href="docs/screenshots/es-tasks.png"><img src="docs/screenshots/es-tasks.png" alt="Tareas programadas"></a><br><sub>Tareas programadas</sub></td></tr>
+<tr><td width="50%" align="center"><a href="docs/screenshots/es-alerts.png"><img src="docs/screenshots/es-alerts.png" alt="Alertas"></a><br><sub>Alertas</sub></td><td width="50%" align="center"><a href="docs/screenshots/es-activity.png"><img src="docs/screenshots/es-activity.png" alt="Actividad: avisos enviados y revisiones"></a><br><sub>Actividad: avisos enviados y revisiones</sub></td></tr>
+<tr><td width="50%" align="center"><a href="docs/screenshots/es-settings.png"><img src="docs/screenshots/es-settings.png" alt="Configuración: umbrales y canales de aviso"></a><br><sub>Configuración: umbrales y canales de aviso</sub></td></tr>
+</table>
+
+<sub>Tema oscuro (sigue el ajuste del sistema). Los números de serie, WWN y nombres de equipo de las capturas son ficticios.</sub>
+
+---
+
 ## Índice
 
 1. [Requisitos](#1-requisitos)

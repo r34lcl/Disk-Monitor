@@ -23,11 +23,15 @@ Everything runs in a single Docker container; the host doesn't need `smartmontoo
 
 ![Dashboard](docs/screenshots/en-dashboard.png)
 
+<details>
+<summary>More screenshots (disk detail, tasks, alerts, activity, settings)</summary>
+
 <table>
 <tr><td width="50%" align="center"><a href="docs/screenshots/en-disk-detail.png"><img src="docs/screenshots/en-disk-detail.png" alt="Disk detail: temperature history and SMART attributes"></a><br><sub>Disk detail: temperature history and SMART attributes</sub></td><td width="50%" align="center"><a href="docs/screenshots/en-tasks.png"><img src="docs/screenshots/en-tasks.png" alt="Scheduled tasks"></a><br><sub>Scheduled tasks</sub></td></tr>
 <tr><td width="50%" align="center"><a href="docs/screenshots/en-alerts.png"><img src="docs/screenshots/en-alerts.png" alt="Alerts"></a><br><sub>Alerts</sub></td><td width="50%" align="center"><a href="docs/screenshots/en-activity.png"><img src="docs/screenshots/en-activity.png" alt="Activity: notifications sent and checks"></a><br><sub>Activity: notifications sent and checks</sub></td></tr>
 <tr><td width="50%" align="center"><a href="docs/screenshots/en-settings.png"><img src="docs/screenshots/en-settings.png" alt="Settings: thresholds and notification channels"></a><br><sub>Settings: thresholds and notification channels</sub></td></tr>
 </table>
+</details>
 
 <sub>Dark theme (follows the system setting). Serial numbers, WWNs and host names in the screenshots are fictitious.</sub>
 
